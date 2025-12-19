@@ -1,0 +1,33 @@
+{
+  "name": "map-app",
+  "version": "0.1.0",
+  "description": "Full-stack application with React, TypeScript, Vite, Node.js, and PostgreSQL",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "build:all": "npm run build:frontend && npm run build:backend"
+  },
+  "keywords": [
+    "react",
+    "typescript",
+    "vite",
+    "nodejs",
+    "express",
+    "postgresql",
+    "fullstack"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.2.0",
+    "@prisma/client": "^7.2.0"
+  }
+}

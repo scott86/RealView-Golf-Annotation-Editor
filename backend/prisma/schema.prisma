@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Course {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(100)
+
+  holes       Hole[]
+  annotations CourseAnnotation[]
+}
+
+model Hole {
+  id         Int @id @default(autoincrement())
+  holeNumber Int
+  par        Int
+
+  courseId    Int
+  course      Course @relation(fields: [courseId], references: [id])
+  annotations HoleAnnotation[]
+}
+
+model HoleAnnotation {
+  id        Int     @id @default(autoincrement())
+  annotType String  @db.VarChar(20)
+  numCoords Int
+  rawCoords Float[] @db.DoublePrecision
+
+  holeId Int
+  hole   Hole @relation(fields: [holeId], references: [id])
+}
+
+model CourseAnnotation {
+  id        Int     @id @default(autoincrement())
+  annotType String  @db.VarChar(20)
+  numCoords Int
+  rawCoords Float[] @db.DoublePrecision
+
+  courseId Int
+  course   Course @relation(fields: [courseId], references: [id])
+}
