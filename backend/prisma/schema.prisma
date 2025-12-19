@@ -7,8 +7,10 @@ datasource db {
 }
 
 model Course {
-  id   Int    @id @default(autoincrement())
-  name String @db.VarChar(100)
+  id              Int     @id @default(autoincrement())
+  name            String  @db.VarChar(100)
+  leaderboardCode String? @db.VarChar(50)
+  achievementCode String? @db.VarChar(50)
 
   holes       Hole[]
   annotations CourseAnnotation[]
