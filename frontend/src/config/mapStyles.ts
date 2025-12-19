@@ -1,7 +1,7 @@
 // Map annotation style library
 // Reusable styles for markers, polygons, and other map annotations
 
-import type { MarkerStyle, PolygonStyle, PolylineStyle, CircleStyle } from '../types/map'
+import type { MarkerStyle, PolygonStyle, PolylineStyle, CircleStyle, AnnotationType } from '../types/map'
 
 // ============================================================================
 // MARKER STYLES
@@ -11,7 +11,26 @@ import type { MarkerStyle, PolygonStyle, PolylineStyle, CircleStyle } from '../t
 // 0 = CIRCLE, 1 = FORWARD_CLOSED_ARROW, 2 = FORWARD_OPEN_ARROW, 3 = BACKWARD_CLOSED_ARROW, 4 = BACKWARD_OPEN_ARROW
 const CIRCLE_PATH = 0
 
-export const markerStyles: Record<string, google.maps.Symbol> = {
+export const markerIconStyles: Record<string, google.maps.Symbol> = {
+
+  tee: {
+    path: CIRCLE_PATH,
+    scale: 10,
+    fillColor: '#FF0000',
+    fillOpacity: 0.8,
+    strokeColor: '#FFFFFF',
+    strokeWeight: 2,
+  },
+
+  cup: {
+    path: CIRCLE_PATH,
+    scale: 10,
+    fillColor: '#FF0000',
+    fillOpacity: 0.8,
+    strokeColor: '#FFFFFF',
+    strokeWeight: 2,
+  },
+
   // Default red circle marker
   default: {
     path: CIRCLE_PATH,
@@ -168,11 +187,31 @@ export const labelStyles: Record<string, google.maps.MarkerLabel> = {
   },
 }
 
+export const markerStyles: Record<string, MarkerStyle> = {
+  tee: {
+    icon: markerIconStyles.tee,
+    label: { ...labelStyles.default, text: 'Tee' },
+  },
+  cup: {
+    icon: markerIconStyles.cup,
+    label: { ...labelStyles.default, text: 'Cup' },
+  },
+}
+
 // ============================================================================
 // POLYGON STYLES
 // ============================================================================
 
 export const polygonStyles: Record<string, PolygonStyle> = {
+  
+  fairway: {
+    fillColor: '#00AA00',
+    fillOpacity: 0.15,
+    strokeColor: "#007700",
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+
   default: {
     fillColor: '#FF0000',
     fillOpacity: 0.35,
@@ -277,9 +316,75 @@ export const circleStyles: Record<string, CircleStyle> = {
   },
 }
 
+export const annotationTypes: Record<string, AnnotationType> = {
+  fairway: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.fairway
+  },
+  fairway_hole: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.hole
+  },
+  green: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.green
+  },
+  green_hole: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.hole
+  },
+  ob: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.ob
+  },
+  teebox: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.teebox
+  },
+  bunker: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.bunker
+  },
+  bunker_hole: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.hole
+  },
+  water: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.water
+  },
+  water_hole: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.hole
+  },
+  asphalt: {
+    annotClass: google.maps.Polygon,
+    style: polygonStyles.asphalt
+  },
+  drop: {
+    annotClass: google.maps.marker.AdvancedMarkerElement,
+    style: polygonStyles.drop
+  },
+  trees: {
+    annotClass: google.maps.Polyline,
+    style: polylineStyles.trees
+  },
+  tee: {
+    annotClass: google.maps.marker.AdvancedMarkerElement,
+    style: markerStyles.tee
+  },
+  cup: {
+    annotClass: google.maps.marker.AdvancedMarkerElement,
+    style: markerStyles.cup
+  },
+}
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+//export function createAnnotation(annotRecord) {
+//}
 
 /**
  * Get a marker style with a custom label
@@ -291,7 +396,7 @@ export function getMarkerWithLabel(
 ): { icon: google.maps.Symbol; label: google.maps.MarkerLabel } {
   const label = { ...labelStyles[labelStyleKey], text: labelText }
   return {
-    icon: markerStyles[styleKey],
+    icon: markerIconStyles[styleKey],
     label,
   }
 }

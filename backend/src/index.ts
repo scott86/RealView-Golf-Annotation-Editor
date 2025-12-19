@@ -1,12 +1,21 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import multer from 'multer';
 import { prisma } from './db/prisma.js';
+import { parseKML } from './services/kmlParser.js';
+import { importCourse } from './services/kmlImporter.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
 
 // Middleware
 app.use(cors());
@@ -29,6 +38,56 @@ app.get('/api/health', async (req: Request, res: Response) => {
       database: 'disconnected',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
+  }
+});
+
+// KML Import endpoint
+app.post('/api/import-kml', upload.single('kml'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No KML file uploaded' });
+    }
+
+    // Parse the KML file
+    const kmlContent = req.file.buffer.toString('utf-8');
+    console.log('Parsing KML file...');
+    const parsedCourse = parseKML(kmlContent);
+
+    // Import into database
+    console.log('Importing course into database...');
+    await importCourse(parsedCourse);
+
+    res.json({
+      message: 'Course imported successfully',
+      courseName: parsedCourse.name,
+      holes: parsedCourse.holes.length,
+      globalAnnotations: parsedCourse.globalAnnotations.length
+    });
+  } catch (error) {
+    console.error('Error importing KML:', error);
+    res.status(500).json({
+      error: 'Failed to import KML',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get all courses (for dropdown)
+app.get('/api/courses-list', async (req: Request, res: Response) => {
+  try {
+    const courses = await prisma.course.findMany({
+      select: {
+        id: true,
+        name: true
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+    res.json(courses);
+  } catch (error) {
+    console.error('Error fetching courses:', error);
+    res.status(500).json({ error: 'Failed to fetch courses' });
   }
 });
 

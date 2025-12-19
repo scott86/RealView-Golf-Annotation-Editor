@@ -2,11 +2,17 @@ import { useState, useEffect } from 'react'
 import { GoogleMap, LoadScript } from '@react-google-maps/api'
 import './MapView.css'
 import { markerStyles, labelStyles } from '../config/mapStyles'
+import { api } from '../utils/api'
 
 interface MapViewProps {
   apiKey: string;
   initialCenter?: { lat: number; lng: number };
   initialZoom?: number;
+}
+
+interface Course {
+  id: number;
+  name: string;
 }
 
 function MapView({ 
@@ -17,6 +23,10 @@ function MapView({
   const [map, setMap] = useState<google.maps.Map | null>(null)
   const [center, setCenter] = useState(initialCenter)
   const [zoom, setZoom] = useState(initialZoom)
+  
+  // Course selection
+  const [courses, setCourses] = useState<Course[]>([])
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null)
   
   // Selection state - stores IDs of multiple selected annots
   const [selectedMarkers, setSelectedMarkers] = useState<Set<string>>(new Set())
@@ -81,6 +91,47 @@ function MapView({
         console.log('Clicked at:', e.latLng.lat(), e.latLng.lng());
     }
   }
+
+  const handleCourseSelect = (courseId: string) => {
+    let courseIdNum = courseId ? Number(courseId) : null;
+    setSelectedCourseId(courseIdNum);
+    if (courseIdNum) {
+
+      const fetchCourseData = async () => {
+        try {
+          const data = await api.getCourse(courseIdNum);
+          
+          let newMarkers = [];
+          let newPolygons = [];
+          for(let hole of data.holes) {
+            for(let annot of hole.annotations) {
+              //switch(annot.annotType) {
+                //case 'ob':
+                  //case ''
+            }
+          }
+
+        } catch (error) {
+          console.error('Error fetching course data:', error)
+        }
+      }
+      fetchCourseData();
+    }
+  }
+
+  // Fetch courses once map loads
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const data = await api.getCourses()
+        setCourses(data)
+      } catch (error) {
+        console.error('Error fetching courses:', error)
+      }
+    }
+    
+    fetchCourses()
+  }, [map])
 
   // Handle marker click - toggle selection (multi-select)
   const handleMarkerClick = (markerId: string) => {
@@ -237,6 +288,41 @@ function MapView({
   return (
     <LoadScript googleMapsApiKey={apiKey}>
       <div className="map-view-container">
+        {/* Course selector dropdown */}
+        <div style={{
+          position: 'absolute',
+          top: '10px',
+          left: '10px',
+          zIndex: 10,
+          backgroundColor: 'white',
+          padding: '10px',
+          borderRadius: '4px',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
+        }}>
+          <label htmlFor="course-select" style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+            Select Course:
+          </label>
+          <select
+            id="course-select"
+            value={selectedCourseId || ''}
+            onChange={(e) =>handleCourseSelect(e.target.value)}
+            style={{
+              padding: '8px',
+              fontSize: '14px',
+              borderRadius: '4px',
+              border: '1px solid #ccc',
+              minWidth: '200px'
+            }}
+          >
+            <option value="">-- Select a course --</option>
+            {courses.map(course => (
+              <option key={course.id} value={course.id}>
+                {course.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="map-info">
           <p>
             Lat: {center.lat.toFixed(6)}, Lng: {center.lng.toFixed(6)}, Zoom: {zoom}

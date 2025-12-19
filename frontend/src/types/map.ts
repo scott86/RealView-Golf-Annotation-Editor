@@ -34,11 +34,17 @@ export interface LabelStyle {
   fontFamily?: string;
 }
 
+// data structure as received from the backend
 export interface Annotation {
-  id: string;
-  position: google.maps.LatLngLiteral;
-  name: string;
-  type: 'marker' | 'polygon' | 'polyline' | 'circle';
-  style?: string; // Reference to a style name
+  id: number;
+  holeId: number;
+  annotType: 'fairway' | 'fairway_hole' | 'green' | 'green_hole' | 'ob' | 'teebox' | 'bunker' | 'bunker_hole' | 'water' | 'water_hole' | 'asphalt' | 'drop' | 'trees' | 'tee' | 'cup'
+  numCoords: number;
+  rawCoords: number[];
 }
 
+// predefined styles for each annotation type
+export interface AnnotationType {
+  annotClass: typeof google.maps.Polygon | typeof google.maps.Polyline | typeof google.maps.marker.AdvancedMarkerElement;
+  style: PolygonStyle | PolylineStyle | MarkerStyle;
+}
