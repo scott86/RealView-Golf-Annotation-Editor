@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { GoogleMap, LoadScript } from '@react-google-maps/api'
 import './MapView.css'
-import { markerStyles, labelStyles } from '../config/mapStyles'
+import { markerStyles, markerIconStyles, markerImgStyles, labelStyles, createAnnotation } from '../config/mapStyles'
 import { api } from '../utils/api'
+import { CourseData, HoleData, Annotation } from '../types/map'
 
 interface MapViewProps {
   apiKey: string;
@@ -27,14 +28,18 @@ function MapView({
   // Course selection
   const [courses, setCourses] = useState<Course[]>([])
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null)
+  const [courseData, setCourseData] = useState<CourseData | null>(null)
   
   // Selection state - stores IDs of multiple selected annots
   const [selectedMarkers, setSelectedMarkers] = useState<Set<string>>(new Set())
   const [selectedPolygons, setSelectedPolygons] = useState<Set<string>>(new Set())
+  const [selectedPolylines, setSelectedPolylines] = useState<Set<string>>(new Set())
   
   // Store annot instances
   const [markerInstances, setMarkerInstances] = useState<google.maps.Marker[]>([])
   const [polygonInstances, setPolygonInstances] = useState<google.maps.Polygon[]>([])
+  const [polylineInstances, setPolylineInstances] = useState<google.maps.Polyline[]>([])
+
 
   const mapContainerStyle = {
     width: '100%',
@@ -100,16 +105,7 @@ function MapView({
       const fetchCourseData = async () => {
         try {
           const data = await api.getCourse(courseIdNum);
-          
-          let newMarkers = [];
-          let newPolygons = [];
-          for(let hole of data.holes) {
-            for(let annot of hole.annotations) {
-              //switch(annot.annotType) {
-                //case 'ob':
-                  //case ''
-            }
-          }
+          setCourseData(data);
 
         } catch (error) {
           console.error('Error fetching course data:', error)
@@ -159,11 +155,59 @@ function MapView({
     })
   }
 
+  // Handle polyline click - toggle selection (multi-select)
+  const handlePolylineClick = (polylineId: string) => {
+    setSelectedPolylines(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(polylineId)) {
+        newSet.delete(polylineId)  // Deselect if already selected
+      } else {
+        newSet.add(polylineId)     // Add to selection
+      }
+      return newSet
+    })
+  }
+
   // Check if marker is selected
   const isMarkerSelected = (markerId: string) => selectedMarkers.has(markerId)
 
   // Check if polygon is selected
   const isPolygonSelected = (polygonId: string) => selectedPolygons.has(polygonId)
+
+  // Check if polyline is selected
+  const isPolylineSelected = (polylineId: string) => selectedPolylines.has(polylineId)
+
+  // utility function to create and organize annotations
+  const _collectAnnotation = (
+    annot: Annotation,
+    gmap: google.maps.Map,
+    markers: google.maps.Marker[],
+    polygons: google.maps.Polygon[],
+    polylines: google.maps.Polyline[]
+  ) => {
+    const annotInstance = createAnnotation(annot, gmap)
+        if(annotInstance instanceof google.maps.Marker) {
+          markers.push(annotInstance)
+          annotInstance.addListener('click', () => {
+            console.log(`✓ Marker ${annot.id} clicked`)
+            handleMarkerClick(annotInstance.get("app_id"))
+          })
+        }
+        else if(annotInstance instanceof google.maps.Polygon) {
+          polygons.push(annotInstance)
+          annotInstance.addListener('click', () => {
+            console.log(`✓ Polygon ${annot.id} clicked`)
+            handlePolygonClick(annotInstance.get("app_id"))
+          })
+        }
+        else if(annotInstance instanceof google.maps.Polyline) {
+          polylines.push(annotInstance)
+          annotInstance.addListener('click', () => {
+            console.log(`✓ Polyline ${annot.id} clicked`)
+            handlePolylineClick(annotInstance.get("app_id"))
+          })
+        }
+  }
 
   // Add markers programmatically after map loads
   useEffect(() => {
@@ -172,7 +216,7 @@ function MapView({
     console.log('✓ Adding markers programmatically...')
 
     // Define markers to create
-    const markersData = [
+    /*const markersData = [
       { id: 'foo', position: { lat: 38.9951228, lng: -77.177219 }, label: 'F' },
       { id: 'bar', position: { lat: 38.9951228, lng: -77.179219 }, label: 'B' },
       { id: 'baz', position: { lat: 38.9961228, lng: -77.179219 }, label: 'Z' },
@@ -187,14 +231,32 @@ function MapView({
             { lat: 38.99381228, lng: -77.177419 },
             { lat: 38.99381228, lng: -77.177019 },
             { lat: 38.99421228, lng: -77.177019 }] },
-    ]
+    ]*/
 
+    if (!courseData) {
+      return;
+    }
+
+    // build all the actual annots and gather them into new arrays
+    let newMarkers: google.maps.Marker[] = [];
+    let newPolygons: google.maps.Polygon[] = [];
+    let newPolylines: google.maps.Polyline[] = [];
+    for(let hole of courseData.holes) {
+      for(let annot of hole.annotations) {
+        _collectAnnotation(annot, map, newMarkers, newPolygons, newPolylines)
+      }
+      for(let annot of courseData.annotations) {
+        _collectAnnotation(annot, map, newMarkers, newPolygons, newPolylines)
+      }
+    }
+
+    /*
     // Create marker instances
     const newMarkers = markersData.map(data => {
       const marker = new google.maps.Marker({
         position: data.position,
         map: map,
-        icon: markerStyles.unselected,
+        icon: markerImgStyles.tee,
         label: { ...labelStyles.default, text: data.label },
         title: data.id
       })
@@ -207,10 +269,12 @@ function MapView({
 
       return marker
     })
+    */
 
     setMarkerInstances(newMarkers)
     console.log(`✓ Created ${newMarkers.length} markers`)
 
+    /*
     // Create polygon instances
     const newPolygons = polygonsData.map(data => {
       const polygon = new google.maps.Polygon({
@@ -228,9 +292,13 @@ function MapView({
 
       return polygon
     })
+    */
 
     setPolygonInstances(newPolygons)
     console.log(`✓ Created ${newPolygons.length} polygons`)
+
+    setPolylineInstances(newPolylines)
+    console.log(`✓ Created ${newPolylines.length} polylines`)
 
     // Cleanup function
     return () => {
@@ -238,52 +306,56 @@ function MapView({
       newMarkers.forEach(marker => marker.setMap(null))
       console.log('Cleaning up polygons...')
       newPolygons.forEach(polygon => polygon.setMap(null))
+      console.log('Cleaning up polylines...')
+      newPolylines.forEach(polyline => polyline.setMap(null))
     }
-  }, [map]) // Only run when map loads
+  }, [courseData]) // Only run when a new course loads
 
   // Update marker styles when selection changes
   useEffect(() => {
     if (markerInstances.length === 0) return
 
-    const markersData = [
-      { id: 'foo', label: 'F' },
-      { id: 'bar', label: 'B' },
-      { id: 'baz', label: 'Z' },
-      { id: 'cup', label: 'cup' },
-      { id: 'marker-17', label: '17' },
-    ]
-
-    markerInstances.forEach((marker, index) => {
-      const data = markersData[index]
-      const isSelected = isMarkerSelected(data.id)
+    markerInstances.forEach((marker) => {
+      const isSelected = isMarkerSelected(marker.get("app_id"))
       
-      marker.setIcon(isSelected ? markerStyles.selected : markerStyles.unselected)
-      marker.setLabel({ 
-        ...(isSelected ? labelStyles.bold : labelStyles.default), 
-        text: data.label 
-      })
+      console.log("TODO: Update marker styles")
+      //marker.setIcon(isSelected ? markerIconStyles.selected : markerImgStyles.cup)
+      //marker.setLabel({ 
+      //  ...(isSelected ? labelStyles.bold : labelStyles.default), 
+      //  text: data.label 
+      //})
     })
-  }, [selectedMarkers, markerInstances])
+  }, [selectedMarkers])
 
   // Update polygon styles when selection changes
   useEffect(() => {
     if (polygonInstances.length === 0) return
 
-    const polygonsData = [
-      { id: 'green', label: 'green' },
-    ]
-
-    polygonInstances.forEach((polygon, index) => {
-      const data = polygonsData[index]
-      const isSelected = isPolygonSelected(data.id)
+    polygonInstances.forEach((polygon) => {
+      const isSelected = isPolygonSelected(polygon.get("app_id"))
       
       polygon.setOptions({
-        fillOpacity: isSelected ? 0.5 : 0.3,
+        //fillOpacity: isSelected ? 0.4 : 0.15,
         strokeColor: isSelected ? 'white' : '#000000',
         strokeWeight: isSelected ? 4 : 2,
       })
     })
-  }, [selectedPolygons, polygonInstances])
+  }, [selectedPolygons])
+
+  // Update polyline styles when selection changes
+  useEffect(() => {
+    if (polylineInstances.length === 0) return
+
+    polylineInstances.forEach((polyline) => {
+      const isSelected = isPolylineSelected(polyline.get("app_id"))
+
+      polyline.setOptions({
+        //strokeColor: isSelected ? 'white' : '#000000',
+        strokeWeight: isSelected ? 4 : 2,
+      })
+    })
+  }, [selectedPolylines])
+
 
   return (
     <LoadScript googleMapsApiKey={apiKey}>

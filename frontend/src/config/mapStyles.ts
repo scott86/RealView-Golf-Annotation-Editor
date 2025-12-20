@@ -1,7 +1,7 @@
 // Map annotation style library
 // Reusable styles for markers, polygons, and other map annotations
 
-import type { MarkerStyle, PolygonStyle, PolylineStyle, CircleStyle, AnnotationType } from '../types/map'
+import type { MarkerStyle, PolygonStyle, PolylineStyle, CircleStyle, Annotation, AnnotationType } from '../types/map'
 
 // ============================================================================
 // MARKER STYLES
@@ -11,25 +11,22 @@ import type { MarkerStyle, PolygonStyle, PolylineStyle, CircleStyle, AnnotationT
 // 0 = CIRCLE, 1 = FORWARD_CLOSED_ARROW, 2 = FORWARD_OPEN_ARROW, 3 = BACKWARD_CLOSED_ARROW, 4 = BACKWARD_OPEN_ARROW
 const CIRCLE_PATH = 0
 
-export const markerIconStyles: Record<string, google.maps.Symbol> = {
-
+export const markerImgStyles: Record<string, google.maps.Icon> = {
   tee: {
-    path: CIRCLE_PATH,
-    scale: 10,
-    fillColor: '#FF0000',
-    fillOpacity: 0.8,
-    strokeColor: '#FFFFFF',
-    strokeWeight: 2,
+    url: "/images/tee_icon.png",
+    scaledSize: { width: 48, height: 48 } as google.maps.Size,
+    anchor: { x: 24, y: 46 } as google.maps.Point,
   },
 
   cup: {
-    path: CIRCLE_PATH,
-    scale: 10,
-    fillColor: '#FF0000',
-    fillOpacity: 0.8,
-    strokeColor: '#FFFFFF',
-    strokeWeight: 2,
+    url: "/images/cup_icon.png",
+    scaledSize: { width: 48, height: 48 } as google.maps.Size,
+    anchor: { x: 24, y: 45 } as google.maps.Point,
   },
+}
+
+export const markerIconStyles: Record<string, google.maps.Symbol> = {
+
 
   // Default red circle marker
   default: {
@@ -189,12 +186,16 @@ export const labelStyles: Record<string, google.maps.MarkerLabel> = {
 
 export const markerStyles: Record<string, MarkerStyle> = {
   tee: {
-    icon: markerIconStyles.tee,
-    label: { ...labelStyles.default, text: 'Tee' },
+    icon: markerImgStyles.tee,
+    label: { ...labelStyles.default, text: 'tee' },
   },
   cup: {
-    icon: markerIconStyles.cup,
-    label: { ...labelStyles.default, text: 'Cup' },
+    icon: markerImgStyles.cup,
+    label: { ...labelStyles.default, text: 'cup' },
+  },
+  drop: {
+    icon: markerImgStyles.tee,
+    label: { ...labelStyles.default, text: 'drop' },
   },
 }
 
@@ -207,7 +208,63 @@ export const polygonStyles: Record<string, PolygonStyle> = {
   fairway: {
     fillColor: '#00AA00',
     fillOpacity: 0.15,
-    strokeColor: "#007700",
+    strokeColor: "#002200",
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+
+  cutout: {
+    fillColor: '#000000',
+    fillOpacity: 0.15,
+    strokeColor: '#000000',
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+
+  green: {
+    fillColor: '#00FF00',
+    fillOpacity: 0.15,
+    strokeColor: '#002200',
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+
+  water: {
+    fillColor: '#0000FF',
+    fillOpacity: 0.01,
+    strokeColor: '#000022',
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+
+  asphalt: {
+    fillColor: '#808080',
+    fillOpacity: 0.15,
+    strokeColor: '#202020',
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+
+  bunker: {
+    fillColor: '#E0E0E0',
+    fillOpacity: 0.15,
+    strokeColor: '#202020',
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+
+  teebox: {
+    fillColor: '#FFFF00',
+    fillOpacity: 0.15,
+    strokeColor: '#222200',
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+
+  ob: {
+    fillColor: '#FF0000',
+    fillOpacity: 0.0,
+    strokeColor: '#770000',
     strokeOpacity: 0.8,
     strokeWeight: 2,
   },
@@ -258,6 +315,13 @@ export const polygonStyles: Record<string, PolygonStyle> = {
 // ============================================================================
 
 export const polylineStyles: Record<string, PolylineStyle> = {
+  
+  trees: {
+    strokeColor: '#883000',
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+
   default: {
     strokeColor: '#FF0000',
     strokeOpacity: 1,
@@ -316,75 +380,108 @@ export const circleStyles: Record<string, CircleStyle> = {
   },
 }
 
-export const annotationTypes: Record<string, AnnotationType> = {
-  fairway: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.fairway
-  },
-  fairway_hole: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.hole
-  },
-  green: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.green
-  },
-  green_hole: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.hole
-  },
-  ob: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.ob
-  },
-  teebox: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.teebox
-  },
-  bunker: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.bunker
-  },
-  bunker_hole: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.hole
-  },
-  water: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.water
-  },
-  water_hole: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.hole
-  },
-  asphalt: {
-    annotClass: google.maps.Polygon,
-    style: polygonStyles.asphalt
-  },
-  drop: {
-    annotClass: google.maps.marker.AdvancedMarkerElement,
-    style: polygonStyles.drop
-  },
-  trees: {
-    annotClass: google.maps.Polyline,
-    style: polylineStyles.trees
-  },
-  tee: {
-    annotClass: google.maps.marker.AdvancedMarkerElement,
-    style: markerStyles.tee
-  },
-  cup: {
-    annotClass: google.maps.marker.AdvancedMarkerElement,
-    style: markerStyles.cup
-  },
+// Function to get annotation types - called after Google Maps loads
+export function getAnnotationTypes(): Record<string, AnnotationType> {
+  return {
+    fairway: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.fairway
+    },
+    fairway_hole: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.cutout
+    },
+    green: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.green
+    },
+    green_hole: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.cutout
+    },
+    ob: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.ob
+    },
+    teebox: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.teebox
+    },
+    bunker: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.bunker
+    },
+    bunker_hole: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.cutout
+    },
+    water: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.water
+    },
+    water_hole: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.cutout
+    },
+    asphalt: {
+      annotClass: google.maps.Polygon,
+      style: polygonStyles.asphalt
+    },
+    drop: {
+      annotClass: google.maps.Marker,
+      style: markerStyles.drop
+    },
+    trees: {
+      annotClass: google.maps.Polyline,
+      style: polylineStyles.trees
+    },
+    tee: {
+      annotClass: google.maps.Marker,
+      style: markerStyles.tee
+    },
+    cup: {
+      annotClass: google.maps.Marker,
+      style: markerStyles.cup
+    },
+  }
 }
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
-//export function createAnnotation(annotRecord) {
-//}
+function _buildGeo(rawGeo: number[], annotClass: typeof google.maps.Polygon | typeof google.maps.Polyline | typeof google.maps.Marker) {
+  if(annotClass === google.maps.Polygon) {
+    let latLngs = [];
+    for(let i = 0; i < rawGeo.length; i += 2) {
+      latLngs.push(new google.maps.LatLng(rawGeo[i+1], rawGeo[i]))
+    }
+    return { paths: [latLngs] }
+  }
+  else if(annotClass === google.maps.Polyline) {
+    let latLngs = [];
+    for(let i = 0; i < rawGeo.length; i += 2) {
+      latLngs.push(new google.maps.LatLng(rawGeo[i+1], rawGeo[i]))
+    }
+    return { path: latLngs }
+  }
+  else if(annotClass === google.maps.Marker) {
+    return { position: new google.maps.LatLng(rawGeo[1], rawGeo[0]) }
+  }
+  return { paths: [] }
+}
+
+export function createAnnotation(annotRecord: Annotation, map: google.maps.Map): google.maps.Polygon | google.maps.Polyline | google.maps.Marker {
+  const annotType = getAnnotationTypes()[annotRecord.annotType]
+  let annotInstance = new annotType.annotClass({
+    paths: [annotRecord.rawCoords],
+    map: map,
+    ..._buildGeo(annotRecord.rawCoords, annotType.annotClass),
+    ...annotType.style
+  })
+  annotInstance.set("app_id", annotRecord.id.toString())
+  return annotInstance
+}
 
 /**
  * Get a marker style with a custom label

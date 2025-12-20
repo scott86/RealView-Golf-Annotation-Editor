@@ -34,7 +34,7 @@ export interface LabelStyle {
   fontFamily?: string;
 }
 
-// data structure as received from the backend
+// data structure for a single annotation as received from the backend
 export interface Annotation {
   id: number;
   holeId: number;
@@ -43,8 +43,27 @@ export interface Annotation {
   rawCoords: number[];
 }
 
+// data structure for a single hole as received from the backend
+export interface HoleData {
+  id: number;
+  holeNumber: number;
+  par: number;
+  courseId: number
+  annotations: Annotation[];
+}
+
+// data structure for whole course as received from the backend
+export interface CourseData {
+  id: number;
+  name: string;
+  leaderboardCode?: string;
+  achievementCode?: string;
+  holes: HoleData[];
+  annotations: Annotation[];
+}
+
 // predefined styles for each annotation type
 export interface AnnotationType {
-  annotClass: typeof google.maps.Polygon | typeof google.maps.Polyline | typeof google.maps.marker.AdvancedMarkerElement;
+  annotClass: typeof google.maps.Polygon | typeof google.maps.Polyline | typeof google.maps.Marker;
   style: PolygonStyle | PolylineStyle | MarkerStyle;
 }
