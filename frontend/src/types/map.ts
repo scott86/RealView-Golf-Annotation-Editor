@@ -3,6 +3,7 @@
 export interface MarkerStyle {
   icon: google.maps.Icon | google.maps.Symbol;
   label?: string | google.maps.MarkerLabel;
+  opacity?: number;
 }
 
 export interface PolygonStyle {
@@ -41,6 +42,7 @@ export interface Annotation {
   annotType: 'fairway' | 'fairway_hole' | 'green' | 'green_hole' | 'ob' | 'teebox' | 'bunker' | 'bunker_hole' | 'water' | 'water_hole' | 'asphalt' | 'drop' | 'trees' | 'tee' | 'cup'
   numCoords: number;
   rawCoords: number[];
+  appId: string; // frontend decoration
 }
 
 // data structure for a single hole as received from the backend
@@ -60,6 +62,7 @@ export interface CourseData {
   achievementCode?: string;
   holes: HoleData[];
   annotations: Annotation[];
+  ref_lat: number; // frontend decoration
 }
 
 // predefined styles for each annotation type

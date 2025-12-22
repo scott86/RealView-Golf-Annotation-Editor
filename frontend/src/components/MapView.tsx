@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { GoogleMap, LoadScript } from '@react-google-maps/api'
 import './MapView.css'
-import { markerStyles, markerIconStyles, markerImgStyles, labelStyles, createAnnotation } from '../config/mapStyles'
+import { markerStyles, markerImgStyles, labelStyles, createAnnotation, setSelectionStyles } from '../config/mapStyles'
 import { api } from '../utils/api'
+import { getLatStep, getLngStep } from '../utils/geo'
+import { totalAnnotations, shiftSelectedAnnotations } from '../utils/annotations'
 import { CourseData, HoleData, Annotation } from '../types/map'
 
 interface MapViewProps {
@@ -30,15 +32,31 @@ function MapView({
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null)
   const [courseData, setCourseData] = useState<CourseData | null>(null)
   
+  // Ref to track current course data (for event handlers with stale closures)
+  const courseDataRef = useRef<CourseData | null>(null)
+  
+  // Annotation selection tree state
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+  
   // Selection state - stores IDs of multiple selected annots
   const [selectedMarkers, setSelectedMarkers] = useState<Set<string>>(new Set())
   const [selectedPolygons, setSelectedPolygons] = useState<Set<string>>(new Set())
   const [selectedPolylines, setSelectedPolylines] = useState<Set<string>>(new Set())
   
+  // Refs to track current selection state (for event handlers with stale closures)
+  const selectedMarkersRef = useRef<Set<string>>(new Set())
+  const selectedPolygonsRef = useRef<Set<string>>(new Set())
+  const selectedPolylinesRef = useRef<Set<string>>(new Set())
+  
   // Store annot instances
-  const [markerInstances, setMarkerInstances] = useState<google.maps.Marker[]>([])
-  const [polygonInstances, setPolygonInstances] = useState<google.maps.Polygon[]>([])
-  const [polylineInstances, setPolylineInstances] = useState<google.maps.Polyline[]>([])
+  const [markerInstances, setMarkerInstances] = useState<Map<string, google.maps.Marker>>(new Map())
+  const [polygonInstances, setPolygonInstances] = useState<Map<string, google.maps.Polygon>>(new Map())
+  const [polylineInstances, setPolylineInstances] = useState<Map<string, google.maps.Polyline>>(new Map())
+  
+  // Refs to track current instance Maps (for event handlers with stale closures)
+  const markerInstancesRef = useRef<Map<string, google.maps.Marker>>(new Map())
+  const polygonInstancesRef = useRef<Map<string, google.maps.Polygon>>(new Map())
+  const polylineInstancesRef = useRef<Map<string, google.maps.Polyline>>(new Map())
 
 
   const mapContainerStyle = {
@@ -60,7 +78,8 @@ function MapView({
     fullscreenControl: true,
     zoomControl: true,
     gestureHandling: 'greedy' as const, // Allows pan/zoom without ctrl key
-    tilt: 0 // Disable tilt/45° view
+    tilt: 0, // Disable tilt/45° view
+    keyboardShortcuts: false // Disable Google Maps' built-in keyboard controls
   }
 
   const onLoad = (map: google.maps.Map) => {
@@ -168,6 +187,109 @@ function MapView({
     })
   }
 
+  // can also select annotations via the checkboxes
+  const handleBatchSelection = (annotIds: string[], isSelected: boolean) => {
+
+    // filter annotations by google type (Marker/Polygon/Polyline)
+    const markerIds = annotIds.filter(id => id.endsWith('Marker'))
+    const polygonIds = annotIds.filter(id => id.endsWith('Polygon'))
+    const polylineIds = annotIds.filter(id => id.endsWith('Polyline'))
+
+    setSelectedMarkers(prev => {
+      const newSet = new Set(prev)
+      markerIds.map(markerId => {
+        if (!isSelected && newSet.has(markerId)) {
+          newSet.delete(markerId)  // Deselect if already selected
+        } else if (isSelected && !newSet.has(markerId)) {
+          newSet.add(markerId)     // Add to selection if previously unselected
+        }
+      })
+      return newSet
+    })
+
+    setSelectedPolygons(prev => {
+      const newSet = new Set(prev)
+      polygonIds.map(polygonId => {
+        if (!isSelected && newSet.has(polygonId)) {
+          newSet.delete(polygonId)  // Deselect if already selected
+        } else if (isSelected && !newSet.has(polygonId)) {
+          newSet.add(polygonId)     // Add to selection if previously unselected
+        }
+      })
+      return newSet
+    })
+
+    setSelectedPolylines(prev => {
+      const newSet = new Set(prev)
+      polylineIds.map(polylineId => {
+        if (!isSelected && newSet.has(polylineId)) {
+          newSet.delete(polylineId)  // Deselect if already selected
+        } else if (isSelected && !newSet.has(polylineId)) {
+          newSet.add(polylineId)     // Add to selection if previously unselected
+        }
+      })
+      return newSet
+    })
+  }
+  const handleSingleAnnotationSelect = (annotId: string, isSelected: boolean) => {
+    handleBatchSelection([annotId], isSelected)
+  }
+
+  const handleSelectGlobalAnnotations = (isSelected: boolean) => {
+    handleBatchSelection(courseData?.annotations.map(annot => annot.appId) || [], isSelected)
+
+    // update checkbox states for all child annotations without triggering a re-render
+    courseData?.annotations.forEach(annot => {
+      const checkbox = document.getElementById(`annot-global-${annot.id}`) as HTMLInputElement;
+      if (checkbox) {
+        checkbox.checked = isSelected;
+      }
+    })
+  }
+
+  const handleSelectHoleAnnotations = (holeId: number, isSelected: boolean) => {
+    handleBatchSelection(courseData?.holes.find(hole => hole.id === holeId)?.annotations.map(annot => annot.appId) || [], isSelected)
+
+    // update checkbox states for all child annotations without triggering a re-render
+    courseData?.holes.find(hole => hole.id === holeId)?.annotations.forEach(annot => {
+      const checkbox = document.getElementById(`annot-hole-${holeId}-${annot.id}`) as HTMLInputElement;
+      if (checkbox) {
+        checkbox.checked = isSelected;
+      }
+    })
+  }
+
+  const handleSelectAllAnnotations = (isSelected: boolean) => {
+    handleBatchSelection(courseData?.annotations.map(annot => annot.appId) || [], isSelected)
+    courseData?.holes.forEach(hole => {
+      handleBatchSelection(hole.annotations.map(annot => annot.appId) || [], isSelected)
+    })
+
+    // update checkbox states for all child annotations without triggering a re-render
+    courseData?.annotations.forEach(annot => {
+      const globalCB = document.getElementById(`folder-global`) as HTMLInputElement;
+      if (globalCB) {
+        globalCB.checked = isSelected;
+      }
+      const checkbox = document.getElementById(`annot-global-${annot.id}`) as HTMLInputElement;
+      if (checkbox) {
+        checkbox.checked = isSelected;
+      }
+    })
+    courseData?.holes.forEach(hole => {
+      const holeCB = document.getElementById(`folder-hole-${hole.id}`) as HTMLInputElement;
+      if (holeCB) {
+        holeCB.checked = isSelected;
+      }
+      hole.annotations.forEach(annot => {
+        const checkbox = document.getElementById(`annot-hole-${hole.id}-${annot.id}`) as HTMLInputElement;
+        if (checkbox) {
+          checkbox.checked = isSelected;
+        }
+      })
+    })
+  }
+
   // Check if marker is selected
   const isMarkerSelected = (markerId: string) => selectedMarkers.has(markerId)
 
@@ -177,128 +299,91 @@ function MapView({
   // Check if polyline is selected
   const isPolylineSelected = (polylineId: string) => selectedPolylines.has(polylineId)
 
+  // Check if annotation is selected
+  const isAnnotationSelected = (annot: Annotation) => selectedMarkers.has(annot.appId) || selectedPolygons.has(annot.appId) || selectedPolylines.has(annot.appId)
+
   // utility function to create and organize annotations
   const _collectAnnotation = (
     annot: Annotation,
     gmap: google.maps.Map,
-    markers: google.maps.Marker[],
-    polygons: google.maps.Polygon[],
-    polylines: google.maps.Polyline[]
+    markers: Map<string, google.maps.Marker>,
+    polygons: Map<string, google.maps.Polygon>,
+    polylines: Map<string, google.maps.Polyline>,
+    isGlobal: boolean
   ) => {
-    const annotInstance = createAnnotation(annot, gmap)
-        if(annotInstance instanceof google.maps.Marker) {
-          markers.push(annotInstance)
-          annotInstance.addListener('click', () => {
-            console.log(`✓ Marker ${annot.id} clicked`)
-            handleMarkerClick(annotInstance.get("app_id"))
-          })
-        }
-        else if(annotInstance instanceof google.maps.Polygon) {
-          polygons.push(annotInstance)
-          annotInstance.addListener('click', () => {
-            console.log(`✓ Polygon ${annot.id} clicked`)
-            handlePolygonClick(annotInstance.get("app_id"))
-          })
-        }
-        else if(annotInstance instanceof google.maps.Polyline) {
-          polylines.push(annotInstance)
-          annotInstance.addListener('click', () => {
-            console.log(`✓ Polyline ${annot.id} clicked`)
-            handlePolylineClick(annotInstance.get("app_id"))
-          })
-        }
+    const annotInstance = createAnnotation(annot, gmap, isGlobal)
+    const appId = annotInstance.get("app_id")
+    
+    if(annotInstance instanceof google.maps.Marker) {
+      markers.set(appId, annotInstance)
+      annotInstance.addListener('click', () => {
+        console.log(`✓ Marker ${appId} clicked`)
+        handleMarkerClick(appId)
+      })
+    }
+    else if(annotInstance instanceof google.maps.Polygon) {
+      polygons.set(appId, annotInstance)
+      annotInstance.addListener('click', () => {
+        console.log(`✓ Polygon ${annot.id} clicked`)
+        handlePolygonClick(appId)
+      })
+    }
+    else if(annotInstance instanceof google.maps.Polyline) {
+      polylines.set(appId, annotInstance)
+      annotInstance.addListener('click', () => {
+        console.log(`✓ Polyline ${annot.id} clicked`)
+        handlePolylineClick(appId)
+      })
+    }
+    
   }
 
   // Add markers programmatically after map loads
   useEffect(() => {
     if (!map) return
 
-    console.log('✓ Adding markers programmatically...')
-
-    // Define markers to create
-    /*const markersData = [
-      { id: 'foo', position: { lat: 38.9951228, lng: -77.177219 }, label: 'F' },
-      { id: 'bar', position: { lat: 38.9951228, lng: -77.179219 }, label: 'B' },
-      { id: 'baz', position: { lat: 38.9961228, lng: -77.179219 }, label: 'Z' },
-      { id: 'cup', position: { lat: 38.9941228, lng: -77.177219 }, label: 'cup' },
-      { id: 'marker-17', position: { lat: 38.9921228, lng: -77.177219 }, label: '17' },
-    ]
-
-    // Define polygons to create
-    const polygonsData = [
-        { id: 'green', path: [
-            { lat: 38.99421228, lng: -77.177419 },
-            { lat: 38.99381228, lng: -77.177419 },
-            { lat: 38.99381228, lng: -77.177019 },
-            { lat: 38.99421228, lng: -77.177019 }] },
-    ]*/
-
     if (!courseData) {
       return;
     }
 
-    // build all the actual annots and gather them into new arrays
-    let newMarkers: google.maps.Marker[] = [];
-    let newPolygons: google.maps.Polygon[] = [];
-    let newPolylines: google.maps.Polyline[] = [];
+    // build all the actual annots and gather them into new Maps
+    const newMarkers = new Map<string, google.maps.Marker>()
+    const newPolygons = new Map<string, google.maps.Polygon>()
+    const newPolylines = new Map<string, google.maps.Polyline>()
     for(let hole of courseData.holes) {
       for(let annot of hole.annotations) {
-        _collectAnnotation(annot, map, newMarkers, newPolygons, newPolylines)
-      }
-      for(let annot of courseData.annotations) {
-        _collectAnnotation(annot, map, newMarkers, newPolygons, newPolylines)
+        _collectAnnotation(annot, map, newMarkers, newPolygons, newPolylines, false)
       }
     }
-
-    /*
-    // Create marker instances
-    const newMarkers = markersData.map(data => {
-      const marker = new google.maps.Marker({
-        position: data.position,
-        map: map,
-        icon: markerImgStyles.tee,
-        label: { ...labelStyles.default, text: data.label },
-        title: data.id
-      })
-
-      // Add click listener
-      marker.addListener('click', () => {
-        console.log(`✓ Marker ${data.id} clicked`)
-        handleMarkerClick(data.id)
-      })
-
-      return marker
-    })
-    */
+    for(let annot of courseData.annotations) {
+      _collectAnnotation(annot, map, newMarkers, newPolygons, newPolylines, true)
+    }
 
     setMarkerInstances(newMarkers)
-    console.log(`✓ Created ${newMarkers.length} markers`)
-
-    /*
-    // Create polygon instances
-    const newPolygons = polygonsData.map(data => {
-      const polygon = new google.maps.Polygon({
-        paths: [data.path],
-        map: map,
-        fillColor: '#00FF00',
-        fillOpacity: 0.3,
-      })
-
-      // Add click listener
-      polygon.addListener('click', () => {
-        console.log(`✓ Polygon ${data.id} clicked`)
-        handlePolygonClick(data.id)
-      })
-
-      return polygon
-    })
-    */
+    console.log(`✓ Created ${newMarkers.size} markers`)
 
     setPolygonInstances(newPolygons)
-    console.log(`✓ Created ${newPolygons.length} polygons`)
+    console.log(`✓ Created ${newPolygons.size} polygons`)
 
     setPolylineInstances(newPolylines)
-    console.log(`✓ Created ${newPolylines.length} polylines`)
+    console.log(`✓ Created ${newPolylines.size} polylines`)
+
+    // check for null map references
+    newMarkers.forEach(marker => {
+      if (marker.getMap() === null) {
+        console.error(`Marker ${marker.get("app_id")} has no map reference`)
+      }
+    })
+    newPolygons.forEach(polygon => {
+      if (polygon.getMap() === null) {
+        console.error(`Polygon ${polygon.get("app_id")} has no map reference`)
+      }
+    })
+    newPolylines.forEach(polyline => {
+      if (polyline.getMap() === null) {
+        console.error(`Polyline ${polyline.get("app_id")} has no map reference`)
+      }
+    })
 
     // Cleanup function
     return () => {
@@ -313,48 +398,116 @@ function MapView({
 
   // Update marker styles when selection changes
   useEffect(() => {
-    if (markerInstances.length === 0) return
+    if (markerInstances.size === 0) return
 
-    markerInstances.forEach((marker) => {
-      const isSelected = isMarkerSelected(marker.get("app_id"))
-      
-      console.log("TODO: Update marker styles")
-      //marker.setIcon(isSelected ? markerIconStyles.selected : markerImgStyles.cup)
-      //marker.setLabel({ 
-      //  ...(isSelected ? labelStyles.bold : labelStyles.default), 
-      //  text: data.label 
-      //})
+    markerInstances.forEach((marker, appId) => {
+      const isSelected = isMarkerSelected(appId);
+      setSelectionStyles(marker, isSelected);
     })
-  }, [selectedMarkers])
+  }, [selectedMarkers, markerInstances])
 
   // Update polygon styles when selection changes
   useEffect(() => {
-    if (polygonInstances.length === 0) return
+    if (polygonInstances.size === 0) return
 
-    polygonInstances.forEach((polygon) => {
-      const isSelected = isPolygonSelected(polygon.get("app_id"))
-      
-      polygon.setOptions({
-        //fillOpacity: isSelected ? 0.4 : 0.15,
-        strokeColor: isSelected ? 'white' : '#000000',
-        strokeWeight: isSelected ? 4 : 2,
-      })
+    polygonInstances.forEach((polygon, appId) => {
+      const isSelected = isPolygonSelected(appId)
+      setSelectionStyles(polygon, isSelected);
     })
-  }, [selectedPolygons])
+  }, [selectedPolygons, polygonInstances])
 
   // Update polyline styles when selection changes
   useEffect(() => {
-    if (polylineInstances.length === 0) return
+    if (polylineInstances.size === 0) return
 
-    polylineInstances.forEach((polyline) => {
-      const isSelected = isPolylineSelected(polyline.get("app_id"))
-
-      polyline.setOptions({
-        //strokeColor: isSelected ? 'white' : '#000000',
-        strokeWeight: isSelected ? 4 : 2,
-      })
+    polylineInstances.forEach((polyline, appId) => {
+      const isSelected = isPolylineSelected(appId);
+      setSelectionStyles(polyline, isSelected);
     })
+  }, [selectedPolylines, polylineInstances])
+
+  // Sync refs with state (so event handlers always have current values)
+  useEffect(() => {
+    selectedMarkersRef.current = selectedMarkers
+  }, [selectedMarkers])
+
+  useEffect(() => {
+    selectedPolygonsRef.current = selectedPolygons
+  }, [selectedPolygons])
+
+  useEffect(() => {
+    selectedPolylinesRef.current = selectedPolylines
   }, [selectedPolylines])
+
+  useEffect(() => {
+    markerInstancesRef.current = markerInstances
+  }, [markerInstances])
+
+  useEffect(() => {
+    polygonInstancesRef.current = polygonInstances
+  }, [polygonInstances])
+
+  useEffect(() => {
+    polylineInstancesRef.current = polylineInstances
+  }, [polylineInstances])
+
+  useEffect(() => {
+    courseDataRef.current = courseData
+  }, [courseData])
+
+  // Keyboard event listener for arrow keys
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check for arrow keys
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        event.preventDefault() // Prevent default map panning
+        event.stopPropagation() // Stop event from reaching Google Maps
+
+        // calculate step sizes based on reference latitude
+        const latStep = getLatStep();
+        const lngStep = getLngStep(courseDataRef.current!.ref_lat);
+
+        let deltaLat = 0.0, deltaLng = 0.0;
+        switch(event.key) {
+          case 'ArrowUp':
+            deltaLat = latStep;
+            console.log('Arrow Up pressed')
+            break
+          case 'ArrowDown':
+            deltaLat = -latStep;
+            console.log('Arrow Down pressed')
+            break
+          case 'ArrowLeft':
+            deltaLng = -lngStep;
+            console.log('Arrow Left pressed')
+            break
+          case 'ArrowRight':
+            deltaLng = lngStep;
+            console.log('Arrow Right pressed')
+            break
+        }
+        // Use refs to get current state values (avoid stale closure)
+        shiftSelectedAnnotations(
+          deltaLat, 
+          deltaLng, 
+          selectedMarkersRef.current, 
+          selectedPolygonsRef.current, 
+          selectedPolylinesRef.current, 
+          markerInstancesRef.current, 
+          polygonInstancesRef.current, 
+          polylineInstancesRef.current
+        )
+      }
+    }
+
+    // Add event listener to window to ensure we capture all keyboard events
+    window.addEventListener('keydown', handleKeyDown, true) // Use capture phase
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true)
+    }
+  }, []) // Empty dependency array - set up once on mount
 
 
   return (
@@ -393,6 +546,152 @@ function MapView({
               </option>
             ))}
           </select>
+
+        {(selectedCourseId !== null && courseData) &&
+        <div style={{ 
+          marginTop: '15px',
+          maxHeight: '500px',
+          overflowY: 'auto',
+          borderTop: '1px solid #ccc',
+          paddingTop: '10px'
+        }}>
+
+          {/* Select All */}
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px', paddingLeft: '5px' }}>
+            <input
+              type="checkbox"
+              id="select-all"
+              style={{ marginRight: '8px', cursor: 'pointer' }}
+              onChange={(e) => handleSelectAllAnnotations(e.target.checked)}
+            />
+            <label htmlFor="select-all" style={{ cursor: 'pointer', fontWeight: 'bold' }}>
+              All annotations ({totalAnnotations(courseData)})
+            </label>
+          </div>
+
+          {/* Global Folder */}
+          <div style={{ marginBottom: '5px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '5px' }}>
+              <button
+                onClick={() => {
+                  setExpandedFolders(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has('global')) {
+                      newSet.delete('global');
+                    } else {
+                      newSet.add('global');
+                    }
+                    return newSet;
+                  });
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '0',
+                  marginRight: '5px',
+                  fontSize: '12px',
+                  width: '16px'
+                }}
+              >
+                {expandedFolders.has('global') ? '▼' : '▶'}
+              </button>
+              <input
+                type="checkbox"
+                id="folder-global"
+                style={{ marginRight: '8px', cursor: 'pointer' }}
+                onChange={(e) => handleSelectGlobalAnnotations(e.target.checked)}
+              />
+              <label htmlFor="folder-global" style={{ cursor: 'pointer', fontWeight: 'bold' }}>
+                Global ({courseData.annotations.length})
+              </label>
+            </div>
+            
+            {/* Global Annotations */}
+            {expandedFolders.has('global') && (
+              <div style={{ paddingLeft: '35px', marginTop: '5px' }}>
+                {courseData.annotations.map((annot) => (
+                  <div key={`global-${annot.id}`} style={{ display: 'flex', alignItems: 'center', marginBottom: '3px' }}>
+                    <input
+                      type="checkbox"
+                      id={`annot-global-${annot.id}`}
+                      style={{ marginRight: '8px', cursor: 'pointer' }}
+                      checked={isAnnotationSelected(annot)}
+                      onChange={(e) => handleSingleAnnotationSelect(annot.appId, e.target.checked)}
+                    />
+                    <label htmlFor={`annot-global-${annot.id}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
+                      {annot.annotType}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Hole Folders */}
+          {courseData.holes.map((hole) => (
+            <div key={hole.id} style={{ marginBottom: '5px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '5px' }}>
+                <button
+                  onClick={() => {
+                    setExpandedFolders(prev => {
+                      const newSet = new Set(prev);
+                      const folderId = `hole-${hole.id}`;
+                      if (newSet.has(folderId)) {
+                        newSet.delete(folderId);
+                      } else {
+                        newSet.add(folderId);
+                      }
+                      return newSet;
+                    });
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '0',
+                    marginRight: '5px',
+                    fontSize: '12px',
+                    width: '16px'
+                  }}
+                >
+                  {expandedFolders.has(`hole-${hole.id}`) ? '▼' : '▶'}
+                </button>
+                <input
+                  type="checkbox"
+                  id={`folder-hole-${hole.id}`}
+                  style={{ marginRight: '8px', cursor: 'pointer' }}
+                  onChange={(e) => handleSelectHoleAnnotations(hole.id, e.target.checked)}
+                />
+                <label htmlFor={`folder-hole-${hole.id}`} style={{ cursor: 'pointer', fontWeight: 'bold' }}>
+                  Hole {hole.holeNumber} - Par {hole.par}
+                </label>
+              </div>
+              
+              {/* Hole Annotations */}
+              {expandedFolders.has(`hole-${hole.id}`) && (
+                <div style={{ paddingLeft: '35px', marginTop: '5px' }}>
+                  {hole.annotations.map((annot) => (
+                    <div key={`hole-${hole.id}-${annot.id}`} style={{ display: 'flex', alignItems: 'center', marginBottom: '3px' }}>
+                      <input
+                        type="checkbox"
+                        id={`annot-hole-${hole.id}-${annot.id}`}
+                        style={{ marginRight: '8px', cursor: 'pointer' }}
+                        checked={isAnnotationSelected(annot)}
+                        onChange={(e) => handleSingleAnnotationSelect(annot.appId, e.target.checked)}
+                      />
+                      <label htmlFor={`annot-hole-${hole.id}-${annot.id}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
+                        {annot.annotType}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        }
+
         </div>
 
         <div className="map-info">

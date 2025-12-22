@@ -7,9 +7,69 @@ import type { MarkerStyle, PolygonStyle, PolylineStyle, CircleStyle, Annotation,
 // MARKER STYLES
 // ============================================================================
 
-// Using numeric path values instead of google.maps.SymbolPath to avoid loading issues
-// 0 = CIRCLE, 1 = FORWARD_CLOSED_ARROW, 2 = FORWARD_OPEN_ARROW, 3 = BACKWARD_CLOSED_ARROW, 4 = BACKWARD_OPEN_ARROW
-const CIRCLE_PATH = 0
+
+export const SELECTION_STYLING = {
+  'ICONOPACITY': [0.3, 1.0],
+
+  'FILLCOLOR': {
+    'teebox': ['#FFFF00', '#FFFF00'],
+    'fairway': ['#00AA00', '#00AA00'],
+    'cutout': ['#000000', '#000000'],
+    'green': ['#00FF00', '#00FF00'],
+    'water': ['#0000FF', '#0000FF'],
+    'asphalt': ['#808080', '#808080'],
+    'bunker': ['#E0E0E0', '#E0E0E0'],
+    'ob': ['#FF0000', '#FF0000'],
+  },
+
+  'FILLOPACITY': {
+    'teebox': [0.05, 0.3],
+    'fairway': [0.05, 0.3],
+    'cutout': [0.05, 0.3],
+    'green': [0.05, 0.3],
+    'water': [0.05, 0.3],
+    'asphalt': [0.05, 0.3],
+    'bunker': [0.05, 0.3],
+    'ob': [0.0, 0.0],
+  },
+
+  'STROKECOLOR': {
+    'teebox': ['#222200', '#222200'],
+    'fairway': ['#002200', '#002200'],
+    'cutout': ['#000000', '#000000'],
+    'green': ['#002200', '#002200'],
+    'water': ['#000022', '#000022'],
+    'asphalt': ['#202020', '#202020'],
+    'bunker': ['#202020', '#202020'],
+    'ob': ['#FF6666', '#FFFFFF'],
+    'trees': ['#883000', '#883000'],
+  },
+
+  'STROKEOPACITY': {
+    'teebox': [0.8, 1.0],
+    'fairway': [0.8, 1.0],
+    'cutout': [0.8, 1.0],
+    'green': [0.8, 1.0],
+    'water': [0.8, 1.0],
+    'asphalt': [0.8, 1.0],
+    'bunker': [0.8, 1.0],
+    'ob': [0.8, 1.0],
+    'trees': [0.8, 1.0],
+  },
+
+  'STROKEWEIGHT': {
+    'teebox': [2, 4],
+    'fairway': [2, 4],
+    'cutout': [2, 4],
+    'green': [2, 4],
+    'water': [2, 4],
+    'asphalt': [2, 4],
+    'bunker': [2, 4],
+    'ob': [2, 4],
+    'trees': [2, 4],
+  },
+}
+
 
 export const markerImgStyles: Record<string, google.maps.Icon> = {
   tee: {
@@ -25,110 +85,6 @@ export const markerImgStyles: Record<string, google.maps.Icon> = {
   },
 }
 
-export const markerIconStyles: Record<string, google.maps.Symbol> = {
-
-
-  // Default red circle marker
-  default: {
-    path: CIRCLE_PATH,
-    scale: 10,
-    fillColor: '#FF0000',
-    fillOpacity: 0.8,
-    strokeColor: '#FFFFFF',
-    strokeWeight: 2,
-  },
-
-  // Large cyan circle (your current style)
-  highlighted: {
-    path: CIRCLE_PATH,
-    scale: 14,
-    fillColor: 'red',
-    fillOpacity: 0.5,
-    strokeColor: 'cyan',
-    strokeWeight: 4,
-  },
-
-  // Selected state marker
-  selected: {
-    path: CIRCLE_PATH,
-    scale: 16,
-    fillColor: '#FFD700',  // Gold
-    fillOpacity: 0.9,
-    strokeColor: '#FFFFFF',
-    strokeWeight: 4,
-  },
-
-  // Unselected state marker
-  unselected: {
-    path: CIRCLE_PATH,
-    scale: 12,
-    fillColor: '#808080',  // Gray
-    fillOpacity: 0.6,
-    strokeColor: '#FFFFFF',
-    strokeWeight: 2,
-  },
-
-  // Small blue marker
-  small: {
-    path: CIRCLE_PATH,
-    scale: 6,
-    fillColor: '#0000FF',
-    fillOpacity: 0.8,
-    strokeColor: '#FFFFFF',
-    strokeWeight: 1,
-  },
-
-  // Yellow warning marker
-  warning: {
-    path: CIRCLE_PATH,
-    scale: 12,
-    fillColor: '#FFFF00',
-    fillOpacity: 0.9,
-    strokeColor: '#FF0000',
-    strokeWeight: 3,
-  },
-
-  // Green success marker
-  success: {
-    path: CIRCLE_PATH,
-    scale: 10,
-    fillColor: '#00FF00',
-    fillOpacity: 0.8,
-    strokeColor: '#006600',
-    strokeWeight: 2,
-  },
-
-  // Square marker
-  square: {
-    path: 'M -5,-5 L 5,-5 L 5,5 L -5,5 Z',
-    fillColor: '#FF00FF',
-    fillOpacity: 0.8,
-    strokeColor: '#FFFFFF',
-    strokeWeight: 2,
-    scale: 1,
-  },
-
-  // Triangle marker
-  triangle: {
-    path: 'M 0,-10 L 8.66,5 L -8.66,5 Z',
-    fillColor: '#FFA500',
-    fillOpacity: 0.8,
-    strokeColor: '#FFFFFF',
-    strokeWeight: 2,
-    scale: 1,
-  },
-
-  // Star marker
-  star: {
-    path: 'M 0,-10 L 2.5,-3 L 10,-3 L 4,2 L 6,9 L 0,4 L -6,9 L -4,2 L -10,-3 L -2.5,-3 Z',
-    fillColor: '#FFD700',
-    fillOpacity: 1,
-    strokeColor: '#FF8C00',
-    strokeWeight: 1,
-    scale: 1,
-  },
-}
-
 // ============================================================================
 // LABEL STYLES
 // ============================================================================
@@ -140,62 +96,23 @@ export const labelStyles: Record<string, google.maps.MarkerLabel> = {
     fontSize: '12px',
     fontWeight: 'normal',
   },
-
-  bold: {
-    text: '',
-    color: '#FFFFFF',
-    fontSize: '14px',
-    fontWeight: 'bold',
-  },
-
-  large: {
-    text: '',
-    color: '#FFFF00',
-    fontSize: '16px',
-    fontWeight: 'bold',
-  },
-
-  small: {
-    text: '',
-    color: '#FFFFFF',
-    fontSize: '10px',
-    fontWeight: 'normal',
-  },
-
-  cyan: {
-    text: '',
-    color: '#00FFFF',
-    fontSize: '14px',
-    fontWeight: 'bold',
-  },
-
-  yellow: {
-    text: '',
-    color: '#FFFF00',
-    fontSize: '14px',
-    fontWeight: 'bold',
-  },
-
-  red: {
-    text: '',
-    color: '#FF0000',
-    fontSize: '14px',
-    fontWeight: 'bold',
-  },
 }
 
 export const markerStyles: Record<string, MarkerStyle> = {
   tee: {
     icon: markerImgStyles.tee,
     label: { ...labelStyles.default, text: 'tee' },
+    opacity: SELECTION_STYLING.ICONOPACITY[0],
   },
   cup: {
     icon: markerImgStyles.cup,
     label: { ...labelStyles.default, text: 'cup' },
+    opacity: SELECTION_STYLING.ICONOPACITY[0],
   },
   drop: {
     icon: markerImgStyles.tee,
     label: { ...labelStyles.default, text: 'drop' },
+    opacity: SELECTION_STYLING.ICONOPACITY[0],
   },
 }
 
@@ -206,67 +123,67 @@ export const markerStyles: Record<string, MarkerStyle> = {
 export const polygonStyles: Record<string, PolygonStyle> = {
   
   fairway: {
-    fillColor: '#00AA00',
-    fillOpacity: 0.15,
-    strokeColor: "#002200",
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    fillColor: SELECTION_STYLING.FILLCOLOR.fairway[0],
+    fillOpacity: SELECTION_STYLING.FILLOPACITY.fairway[0],
+    strokeColor: SELECTION_STYLING.STROKECOLOR.fairway[0],
+    strokeOpacity: SELECTION_STYLING.STROKEOPACITY.fairway[0],
+    strokeWeight: SELECTION_STYLING.STROKEWEIGHT.fairway[0],
   },
 
   cutout: {
-    fillColor: '#000000',
-    fillOpacity: 0.15,
-    strokeColor: '#000000',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    fillColor: SELECTION_STYLING.FILLCOLOR.cutout[0],
+    fillOpacity: SELECTION_STYLING.FILLOPACITY.cutout[0],
+    strokeColor: SELECTION_STYLING.STROKECOLOR.cutout[0],
+    strokeOpacity: SELECTION_STYLING.STROKEOPACITY.cutout[0],
+    strokeWeight: SELECTION_STYLING.STROKEWEIGHT.cutout[0],
   },
 
   green: {
-    fillColor: '#00FF00',
-    fillOpacity: 0.15,
-    strokeColor: '#002200',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    fillColor: SELECTION_STYLING.FILLCOLOR.green[0],
+    fillOpacity: SELECTION_STYLING.FILLOPACITY.green[0],
+    strokeColor: SELECTION_STYLING.STROKECOLOR.green[0],
+    strokeOpacity: SELECTION_STYLING.STROKEOPACITY.green[0],
+    strokeWeight: SELECTION_STYLING.STROKEWEIGHT.green[0],
   },
 
   water: {
-    fillColor: '#0000FF',
-    fillOpacity: 0.01,
-    strokeColor: '#000022',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    fillColor: SELECTION_STYLING.FILLCOLOR.water[0],
+    fillOpacity: SELECTION_STYLING.FILLOPACITY.water[0],
+    strokeColor: SELECTION_STYLING.STROKECOLOR.water[0],
+    strokeOpacity: SELECTION_STYLING.STROKEOPACITY.water[0],
+    strokeWeight: SELECTION_STYLING.STROKEWEIGHT.water[0],
   },
 
   asphalt: {
-    fillColor: '#808080',
-    fillOpacity: 0.15,
-    strokeColor: '#202020',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    fillColor: SELECTION_STYLING.FILLCOLOR.asphalt[0],
+    fillOpacity: SELECTION_STYLING.FILLOPACITY.asphalt[0],
+    strokeColor: SELECTION_STYLING.STROKECOLOR.asphalt[0],
+    strokeOpacity: SELECTION_STYLING.STROKEOPACITY.asphalt[0],
+    strokeWeight: SELECTION_STYLING.STROKEWEIGHT.asphalt[0],
   },
 
   bunker: {
-    fillColor: '#E0E0E0',
-    fillOpacity: 0.15,
-    strokeColor: '#202020',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    fillColor: SELECTION_STYLING.FILLCOLOR.bunker[0],
+    fillOpacity: SELECTION_STYLING.FILLOPACITY.bunker[0],
+    strokeColor: SELECTION_STYLING.STROKECOLOR.bunker[0],
+    strokeOpacity: SELECTION_STYLING.STROKEOPACITY.bunker[0],
+    strokeWeight: SELECTION_STYLING.STROKEWEIGHT.bunker[0],
   },
 
   teebox: {
-    fillColor: '#FFFF00',
-    fillOpacity: 0.15,
-    strokeColor: '#222200',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    fillColor: SELECTION_STYLING.FILLCOLOR.teebox[0],
+    fillOpacity: SELECTION_STYLING.FILLOPACITY.teebox[0],
+    strokeColor: SELECTION_STYLING.STROKECOLOR.teebox[0],
+    strokeOpacity: SELECTION_STYLING.STROKEOPACITY.teebox[0],
+    strokeWeight: SELECTION_STYLING.STROKEWEIGHT.teebox[0],
   },
 
   ob: {
-    fillColor: '#FF0000',
-    fillOpacity: 0.0,
-    strokeColor: '#770000',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    fillColor: SELECTION_STYLING.FILLCOLOR.ob[0],
+    fillOpacity: SELECTION_STYLING.FILLOPACITY.ob[0],
+    strokeColor: SELECTION_STYLING.STROKECOLOR.ob[0],
+    strokeOpacity: SELECTION_STYLING.STROKEOPACITY.ob[0],
+    strokeWeight: SELECTION_STYLING.STROKEWEIGHT.ob[0],
   },
 
   default: {
@@ -277,37 +194,6 @@ export const polygonStyles: Record<string, PolygonStyle> = {
     strokeWeight: 2,
   },
 
-  zone: {
-    fillColor: '#0000FF',
-    fillOpacity: 0.2,
-    strokeColor: '#0000FF',
-    strokeOpacity: 0.6,
-    strokeWeight: 2,
-  },
-
-  restricted: {
-    fillColor: '#FF0000',
-    fillOpacity: 0.3,
-    strokeColor: '#FF0000',
-    strokeOpacity: 1,
-    strokeWeight: 3,
-  },
-
-  boundary: {
-    fillColor: '#00FF00',
-    fillOpacity: 0.1,
-    strokeColor: '#00FF00',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
-  },
-
-  highlight: {
-    fillColor: '#FFFF00',
-    fillOpacity: 0.4,
-    strokeColor: '#FFFF00',
-    strokeOpacity: 0.9,
-    strokeWeight: 3,
-  },
 }
 
 // ============================================================================
@@ -317,66 +203,15 @@ export const polygonStyles: Record<string, PolygonStyle> = {
 export const polylineStyles: Record<string, PolylineStyle> = {
   
   trees: {
-    strokeColor: '#883000',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    strokeColor: SELECTION_STYLING.STROKECOLOR.trees[0],
+    strokeOpacity: SELECTION_STYLING.STROKEOPACITY.trees[0],
+    strokeWeight: SELECTION_STYLING.STROKEWEIGHT.trees[0],
   },
 
   default: {
     strokeColor: '#FF0000',
     strokeOpacity: 1,
     strokeWeight: 3,
-  },
-
-  route: {
-    strokeColor: '#0000FF',
-    strokeOpacity: 0.8,
-    strokeWeight: 4,
-  },
-
-  boundary: {
-    strokeColor: '#FFFF00',
-    strokeOpacity: 0.9,
-    strokeWeight: 2,
-  },
-
-  dashed: {
-    strokeColor: '#00FF00',
-    strokeOpacity: 0.7,
-    strokeWeight: 2,
-  },
-
-  thick: {
-    strokeColor: '#FF00FF',
-    strokeOpacity: 0.9,
-    strokeWeight: 6,
-  },
-}
-
-// ============================================================================
-// CIRCLE STYLES
-// ============================================================================
-
-export const circleStyles: Record<string, CircleStyle> = {
-  default: {
-    fillColor: '#0000FF',
-    fillOpacity: 0.2,
-    strokeColor: '#0000FF',
-    strokeWeight: 2,
-  },
-
-  range: {
-    fillColor: '#00FF00',
-    fillOpacity: 0.15,
-    strokeColor: '#00FF00',
-    strokeWeight: 1,
-  },
-
-  coverage: {
-    fillColor: '#FF0000',
-    fillOpacity: 0.1,
-    strokeColor: '#FF0000',
-    strokeWeight: 1,
   },
 }
 
@@ -471,7 +306,27 @@ function _buildGeo(rawGeo: number[], annotClass: typeof google.maps.Polygon | ty
   return { paths: [] }
 }
 
-export function createAnnotation(annotRecord: Annotation, map: google.maps.Map): google.maps.Polygon | google.maps.Polyline | google.maps.Marker {
+export function buildAppId(annotRecord: Annotation, isGlobal: boolean): string {
+  let googleType = "UnknownType";
+  switch(getAnnotationTypes()[annotRecord.annotType].annotClass) {
+    case google.maps.Polygon:
+      googleType = "Polygon";
+      break;
+    case google.maps.Polyline:
+      googleType = "Polyline";
+      break;
+    case google.maps.Marker:
+      googleType = "Marker";
+      break;
+  }
+  let appId = annotRecord.id.toString() + '-' + googleType;
+  if(isGlobal) {
+    appId = "g" + appId; // this some hacky shit
+  }
+  return appId;
+}
+
+export function createAnnotation(annotRecord: Annotation, map: google.maps.Map, isGlobal: boolean): google.maps.Polygon | google.maps.Polyline | google.maps.Marker {
   const annotType = getAnnotationTypes()[annotRecord.annotType]
   let annotInstance = new annotType.annotClass({
     paths: [annotRecord.rawCoords],
@@ -479,42 +334,46 @@ export function createAnnotation(annotRecord: Annotation, map: google.maps.Map):
     ..._buildGeo(annotRecord.rawCoords, annotType.annotClass),
     ...annotType.style
   })
-  annotInstance.set("app_id", annotRecord.id.toString())
+  // build application-level id that encodes database id and google type (Marker/Polygon/Polyline)
+  annotInstance.set("app_id", buildAppId(annotRecord, isGlobal))
+  annotInstance.set("annot_type", annotRecord.annotType)
   return annotInstance
 }
 
-/**
- * Get a marker style with a custom label
- */
-export function getMarkerWithLabel(
-  styleKey: keyof typeof markerStyles,
-  labelText: string,
-  labelStyleKey: keyof typeof labelStyles = 'default'
-): { icon: google.maps.Symbol; label: google.maps.MarkerLabel } {
-  const label = { ...labelStyles[labelStyleKey], text: labelText }
-  return {
-    icon: markerIconStyles[styleKey],
-    label,
+export function setSelectionStyles(annotInstance: google.maps.Polygon | google.maps.Polyline | google.maps.Marker, isSelected: boolean) {
+  let annotType = annotInstance.get("annot_type") as string;
+  if(annotType.endsWith("_hole")) {
+    annotType = "cutout";
   }
-}
-
-/**
- * Create a custom marker style
- */
-export function createMarkerStyle(
-  fillColor: string,
-  strokeColor: string,
-  scale: number = 10,
-  fillOpacity: number = 0.8,
-  strokeWeight: number = 2
-): google.maps.Symbol {
-  return {
-    path: CIRCLE_PATH,
-    scale,
-    fillColor,
-    fillOpacity,
-    strokeColor,
-    strokeWeight,
+  const idx = isSelected ? 1 : 0;
+  if(annotInstance instanceof google.maps.Marker) {
+    annotInstance.setOpacity(SELECTION_STYLING.ICONOPACITY[idx]);
+  }
+  else if(annotInstance instanceof google.maps.Polygon) {
+    // Type guard: ensure annotType is a valid key
+    const validTypes = ['teebox', 'fairway', 'cutout', 'green', 'water', 'asphalt', 'bunker', 'ob'] as const;
+    type ValidType = typeof validTypes[number];
+    
+    const typedAnnotType = (validTypes.includes(annotType as ValidType) ? annotType : 'fairway') as ValidType;
+    
+    annotInstance.setOptions({
+      fillColor: SELECTION_STYLING.FILLCOLOR[typedAnnotType][idx],
+      fillOpacity: SELECTION_STYLING.FILLOPACITY[typedAnnotType][idx],
+      strokeColor: SELECTION_STYLING.STROKECOLOR[typedAnnotType][idx],
+      strokeOpacity: SELECTION_STYLING.STROKEOPACITY[typedAnnotType][idx],
+      strokeWeight: SELECTION_STYLING.STROKEWEIGHT[typedAnnotType][idx],
+    })
+  }
+  else if(annotInstance instanceof google.maps.Polyline) {
+    const validTypes = ['trees'] as const;
+    type ValidType = typeof validTypes[number];    
+    const typedAnnotType = (validTypes.includes(annotType as ValidType) ? annotType : 'default') as ValidType;
+    
+    annotInstance.setOptions({
+      strokeColor: SELECTION_STYLING.STROKECOLOR[typedAnnotType][idx],
+      strokeOpacity: SELECTION_STYLING.STROKEOPACITY[typedAnnotType][idx],
+      strokeWeight: SELECTION_STYLING.STROKEWEIGHT[typedAnnotType][idx],
+    })
   }
 }
 

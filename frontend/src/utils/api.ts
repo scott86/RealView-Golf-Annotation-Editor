@@ -1,5 +1,8 @@
 // Centralized API configuration and utilities
 
+import { Annotation, HoleData } from '../types/map';
+import { buildAppId } from '../config/mapStyles';
+
 // Base URL - uses Vite proxy in development (/api -> http://localhost:5000/api)
 // In production, this can be configured via environment variable
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -19,7 +22,26 @@ export const api = {
     if (!response.ok) {
       throw new Error('Failed to fetch course');
     }
-    return response.json();
+    let data = await response.json();
+    let set_ref_lat = false;
+    data.annotations.forEach((annot: Annotation) => {
+      annot.appId = buildAppId(annot, true); // apply frontend decoration
+      if (!set_ref_lat) {
+        data.ref_lat = annot.rawCoords[1]; // apply frontend decoration
+        set_ref_lat = true;
+      }
+    })
+    data.holes.forEach((hole: HoleData) => {
+      hole.annotations.forEach((annot: Annotation) => {
+        annot.appId = buildAppId(annot, false); // apply frontend decoration
+        if (!set_ref_lat) {
+          data.ref_lat = annot.rawCoords[1]; // apply frontend decoration
+          set_ref_lat = true;
+        }
+      })
+    })
+    console.log("course data received. reference latitude: ", data.ref_lat);
+    return data;
   },
 
   // Health check
