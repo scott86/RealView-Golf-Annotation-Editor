@@ -4,7 +4,7 @@ import './MapView.css'
 import { markerStyles, markerImgStyles, labelStyles, createAnnotation, setSelectionStyles } from '../config/mapStyles'
 import { api } from '../utils/api'
 import { getLatStep, getLngStep } from '../utils/geo'
-import { totalAnnotations, shiftSelectedAnnotations } from '../utils/annotations'
+import { totalAnnotations, shiftSelectedAnnotations, createVertexMarkers, EditPolygon, createEditPolygon, selectNewVertex, insertNewVertex, updateSelectedVertex, deleteSelectedVertex, cleanUpEditPolygon, unselectVertex } from '../utils/annotations'
 import { CourseData, HoleData, Annotation } from '../types/map'
 
 interface MapViewProps {
@@ -26,6 +26,8 @@ function MapView({
   const [map, setMap] = useState<google.maps.Map | null>(null)
   const [center, setCenter] = useState(initialCenter)
   const [zoom, setZoom] = useState(initialZoom)
+
+  const mapRef = useRef<google.maps.Map | null>(null)
   
   // Course selection
   const [courses, setCourses] = useState<Course[]>([])
@@ -58,6 +60,18 @@ function MapView({
   const polygonInstancesRef = useRef<Map<string, google.maps.Polygon>>(new Map())
   const polylineInstancesRef = useRef<Map<string, google.maps.Polyline>>(new Map())
 
+  // track whether a vertex marker is being dragged
+  const [isVertexMarkerDragging, setIsVertexMarkerDragging] = useState(false)
+  const [draggedVertexMarker, setDraggedVertexMarker] = useState<google.maps.Marker | null>(null)
+
+  const isVertexMarkerDraggingRef = useRef(false)
+  const draggedVertexMarkerRef = useRef<google.maps.Marker | null>(null)
+
+  //const [editingPolygon, setEditingPolygon] = useState<EditPolygon | null>(null)
+  const editingPolygonRef = useRef<EditPolygon | null>(null)
+
+  const [uiMode, setUiMode] = useState<"shift" | "edit">("shift")
+  const uiModeRef = useRef<"shift" | "edit">("shift")
 
   const mapContainerStyle = {
     width: '100%',
@@ -77,6 +91,7 @@ function MapView({
     streetViewControl: false,
     fullscreenControl: true,
     zoomControl: true,
+    maxZoom: 24,
     gestureHandling: 'greedy' as const, // Allows pan/zoom without ctrl key
     tilt: 0, // Disable tilt/45° view
     keyboardShortcuts: false // Disable Google Maps' built-in keyboard controls
@@ -113,6 +128,27 @@ function MapView({
   const handleClick = (e: google.maps.MapMouseEvent) => {
     if (e.latLng) {
         console.log('Clicked at:', e.latLng.lat(), e.latLng.lng());
+        if (isVertexMarkerDraggingRef.current) {
+          console.log('Vertex marker dragged')
+          updateSelectedVertex(editingPolygonRef.current!, e.latLng);
+          //draggedVertexMarkerRef.current!.setPosition(e.latLng)
+          //setIsVertexMarkerDragging(false)
+          //setDraggedVertexMarker(null)
+          //setAllPolygonClickability(true)
+        }
+    }
+  }
+
+  const handleRightClick = (e: google.maps.MapMouseEvent) => {
+    if (e.latLng) {
+      console.log('Right clicked at:', e.latLng.lat(), e.latLng.lng());
+
+      // this is the only way to go from vertex dragging state to polygon editing mode
+      if (isVertexMarkerDraggingRef.current !== null) {
+        setIsVertexMarkerDragging(false)
+        setDraggedVertexMarker(null)
+        unselectVertex(editingPolygonRef.current!)
+      }
     }
   }
 
@@ -150,6 +186,12 @@ function MapView({
 
   // Handle marker click - toggle selection (multi-select)
   const handleMarkerClick = (markerId: string) => {
+
+    // edit mode has its own handlers for markers
+    if (uiModeRef.current === "edit") {
+      return;
+    }
+
     setSelectedMarkers(prev => {
       const newSet = new Set(prev)
       if (newSet.has(markerId)) {
@@ -161,15 +203,51 @@ function MapView({
     })
   }
 
+  const setAllPolygonClickability = (clickable: boolean) => {
+    console.log("[set clickability] polygon instances: ", polygonInstancesRef.current);
+    polygonInstancesRef.current.forEach((polygon, appId) => {
+      polygon.setOptions({ clickable: clickable });
+    })
+  }
+
   // Handle polygon click - toggle selection (multi-select)
   const handlePolygonClick = (polygonId: string) => {
+    console.log("[debug] handlePolygonClick entrypoint");
+
+    // TODO: some janky stuff is happening.
+    // need to get to the bottom of why this callback executes twice after one click.
+    // maybe it's best to not put a ton of logic inside the setter argument impl.
+
     setSelectedPolygons(prev => {
+      console.log("[debug] handlePolygonClick setter callback entrypoint");
       const newSet = new Set(prev)
+
       if (newSet.has(polygonId)) {
         newSet.delete(polygonId)  // Deselect if already selected
       } else {
         newSet.add(polygonId)     // Add to selection
       }
+      
+      /*
+      if (newSet.has(polygonId) && draggedVertexMarkerRef.current === null) {
+        // we're not editing a vertex, so we can deselect
+        newSet.delete(polygonId)  // Deselect if already selected
+        if (uiModeRef.current === "edit") {
+          // release currently editing polygon and make all polygons clickable again
+          cleanUpEditPolygon(editingPolygonRef.current!)
+          editingPolygonRef.current = null
+          setAllPolygonClickability(true)
+        }
+      } else if (uiModeRef.current === "shift" || editingPolygonRef.current === null) {
+        newSet.add(polygonId)     // Add to selection
+        if (uiModeRef.current === "edit") {
+          editingPolygonRef.current = createEditPolygon(polygonInstancesRef.current.get(polygonId)!, setIsVertexMarkerDragging, setDraggedVertexMarker)
+          // disable clickability for all polygons except this one
+          setAllPolygonClickability(false)
+          polygonInstancesRef.current.get(polygonId)!.setOptions({ clickable: true })
+        }
+      }
+      */
       return newSet
     })
   }
@@ -369,20 +447,24 @@ function MapView({
     console.log(`✓ Created ${newPolylines.size} polylines`)
 
     // check for null map references
+    // and also override the right-click handler for everyone
     newMarkers.forEach(marker => {
       if (marker.getMap() === null) {
         console.error(`Marker ${marker.get("app_id")} has no map reference`)
       }
+      marker.addListener('rightclick', (e: google.maps.MapMouseEvent) => { handleRightClick(e);})
     })
     newPolygons.forEach(polygon => {
       if (polygon.getMap() === null) {
         console.error(`Polygon ${polygon.get("app_id")} has no map reference`)
       }
+      polygon.addListener('rightclick', (e: google.maps.MapMouseEvent) => { handleRightClick(e);})
     })
     newPolylines.forEach(polyline => {
       if (polyline.getMap() === null) {
         console.error(`Polyline ${polyline.get("app_id")} has no map reference`)
       }
+      polyline.addListener('rightclick', (e: google.maps.MapMouseEvent) => { handleRightClick(e);})
     })
 
     // Cleanup function
@@ -407,6 +489,7 @@ function MapView({
   }, [selectedMarkers, markerInstances])
 
   // Update polygon styles when selection changes
+  // Also need to enforce rules for edit mode
   useEffect(() => {
     if (polygonInstances.size === 0) return
 
@@ -414,6 +497,31 @@ function MapView({
       const isSelected = isPolygonSelected(appId)
       setSelectionStyles(polygon, isSelected);
     })
+
+    if (uiMode === "edit") {
+      if (selectedPolygons.size == 0) {
+        // one poly selected ==> clean state. all polygons should be clickable
+        setAllPolygonClickability(true)
+
+        // remove all vertex markers
+        if (editingPolygonRef.current !== null) {
+          console.log("cleaning up edit polygon");
+          cleanUpEditPolygon(editingPolygonRef.current!)
+          editingPolygonRef.current = null;
+        }
+      } else {
+        // clean state ==> one poly selected.
+        // selected poly should be clickable in order to deselect it
+        setAllPolygonClickability(false)
+        selectedPolygons.forEach(polygonId => {
+          polygonInstances.get(polygonId)!.setOptions({ clickable: true })
+          editingPolygonRef.current = createEditPolygon(polygonInstances.get(polygonId)!, setIsVertexMarkerDragging, setDraggedVertexMarker)
+        })
+
+        // display vertex markers
+        //createVertexMarkers(polygonInstances.get(Array.from(selectedPolygons)[0])!, map!)
+      }
+    }
   }, [selectedPolygons, polygonInstances])
 
   // Update polyline styles when selection changes
@@ -427,6 +535,18 @@ function MapView({
   }, [selectedPolylines, polylineInstances])
 
   // Sync refs with state (so event handlers always have current values)
+  useEffect(() => {
+    mapRef.current = map
+  }, [map])
+
+  useEffect(() => {
+    isVertexMarkerDraggingRef.current = isVertexMarkerDragging
+  }, [isVertexMarkerDragging])
+
+  useEffect(() => {
+    draggedVertexMarkerRef.current = draggedVertexMarker
+  }, [draggedVertexMarker])
+
   useEffect(() => {
     selectedMarkersRef.current = selectedMarkers
   }, [selectedMarkers])
@@ -455,7 +575,31 @@ function MapView({
     courseDataRef.current = courseData
   }, [courseData])
 
-  // Keyboard event listener for arrow keys
+  useEffect(() => {
+    uiModeRef.current = uiMode
+  }, [uiMode])
+
+  /*
+  useEffect(() => {
+    editingPolygonRef.current = editingPolygon
+  }, [editingPolygon])
+  */
+
+  useEffect(() => {
+    // upon a mode switch, deselect everything
+    setSelectedMarkers(new Set())
+    setSelectedPolygons(new Set())
+    setSelectedPolylines(new Set())
+    if (editingPolygonRef.current !== null) {
+      cleanUpEditPolygon(editingPolygonRef.current!)
+      editingPolygonRef.current = null;
+    }
+    setAllPolygonClickability(true)
+    setIsVertexMarkerDragging(false)
+    setDraggedVertexMarker(null)
+  }, [uiMode])
+
+  // Keyboard event listener for arrow (and other)keys
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Check for arrow keys
@@ -497,6 +641,21 @@ function MapView({
           polygonInstancesRef.current, 
           polylineInstancesRef.current
         )
+      }
+
+      // key presses that apply to edit mode (with selected vertex)
+      if (uiModeRef.current === "edit" && draggedVertexMarkerRef.current !== null) {
+        
+        // delete key can delete a selected vertex
+        if (event.key === 'Delete') {
+          deleteSelectedVertex(editingPolygonRef.current!)
+        }
+
+        // insert key can insert a new vertex
+        if (event.key === 'Insert') {
+          insertNewVertex(editingPolygonRef.current!)
+        }
+
       }
     }
 
@@ -546,6 +705,76 @@ function MapView({
               </option>
             ))}
           </select>
+
+          <div style={{
+            marginTop: '15px',
+            borderTop: '1px solid #ccc',
+            paddingTop: '10px'
+          }}>
+            {/* rocker switch to toggle between shift and edit mode */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#333' }}>
+                Mode
+              </label>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                backgroundColor: '#f0f0f0',
+                padding: '4px',
+                borderRadius: '20px',
+                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)'
+              }}>
+                <span style={{
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  color: '#666',
+                  minWidth: '40px',
+                  textAlign: 'center'
+                }}
+                title="Can select multiple annotations and shift them all using the arrow keys. Perfect for correcting orthorectification errors.">
+                  Shift
+                </span>
+                <div style={{
+                  position: 'relative',
+                  width: '48px',
+                  height: '24px',
+                  backgroundColor: '#ccc',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.3s'
+                }}
+                onClick={() => setUiMode(uiMode === "shift" ? "edit" : "shift")}>
+                  <div style={{
+                    position: 'absolute',
+                    top: '2px',
+                    left: uiMode === "shift" ? "2px" : "26px",
+                    width: '20px',
+                    height: '20px',
+                    backgroundColor: "#0099ff",
+                    borderRadius: '50%',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                    transition: 'transform 0.3s, left 0.3s'
+                  }}></div>
+                </div>
+                <span style={{
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  color: '#666',
+                  minWidth: '40px',
+                  textAlign: 'center'
+                }}
+                title="Edit the vertices of a single polygon">
+                  Edit
+                </span>
+              </div>
+            </div>
+          </div>
 
         {(selectedCourseId !== null && courseData) &&
         <div style={{ 
@@ -601,6 +830,7 @@ function MapView({
                 id="folder-global"
                 style={{ marginRight: '8px', cursor: 'pointer' }}
                 onChange={(e) => handleSelectGlobalAnnotations(e.target.checked)}
+                disabled={uiMode === "edit"}
               />
               <label htmlFor="folder-global" style={{ cursor: 'pointer', fontWeight: 'bold' }}>
                 Global ({courseData.annotations.length})
@@ -618,6 +848,7 @@ function MapView({
                       style={{ marginRight: '8px', cursor: 'pointer' }}
                       checked={isAnnotationSelected(annot)}
                       onChange={(e) => handleSingleAnnotationSelect(annot.appId, e.target.checked)}
+                      disabled={uiMode === "edit" && (editingPolygonRef.current !== null) && !isAnnotationSelected(annot)}
                     />
                     <label htmlFor={`annot-global-${annot.id}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
                       {annot.annotType}
@@ -662,6 +893,7 @@ function MapView({
                   id={`folder-hole-${hole.id}`}
                   style={{ marginRight: '8px', cursor: 'pointer' }}
                   onChange={(e) => handleSelectHoleAnnotations(hole.id, e.target.checked)}
+                  disabled={uiMode === "edit"}
                 />
                 <label htmlFor={`folder-hole-${hole.id}`} style={{ cursor: 'pointer', fontWeight: 'bold' }}>
                   Hole {hole.holeNumber} - Par {hole.par}
@@ -679,6 +911,7 @@ function MapView({
                         style={{ marginRight: '8px', cursor: 'pointer' }}
                         checked={isAnnotationSelected(annot)}
                         onChange={(e) => handleSingleAnnotationSelect(annot.appId, e.target.checked)}
+                        disabled={uiMode === "edit" && (editingPolygonRef.current !== null) && !isAnnotationSelected(annot)}
                       />
                       <label htmlFor={`annot-hole-${hole.id}-${annot.id}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
                         {annot.annotType}
@@ -713,6 +946,7 @@ function MapView({
           onUnmount={onUnmount}
           onIdle={handleIdle}
           onClick={handleClick}
+          onRightClick={handleRightClick}
           options={options}
         >
           {/* Markers added programmatically via useEffect */}

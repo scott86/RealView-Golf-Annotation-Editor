@@ -17,7 +17,7 @@ function MapPage() {
     <div>
       <MapView 
         apiKey={apiKey}
-        initialCenter={{ lat: 40.7128, lng: -74.0060 }} // NYC
+        initialCenter={{ lat: 38.99479, lng: -77.1777 }} // DC
         initialZoom={12}
       />
     </div>
