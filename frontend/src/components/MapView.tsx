@@ -4,7 +4,7 @@ import './MapView.css'
 import { markerStyles, markerImgStyles, labelStyles, createAnnotation, setSelectionStyles } from '../config/mapStyles'
 import { api } from '../utils/api'
 import { getLatStep, getLngStep } from '../utils/geo'
-import { totalAnnotations, shiftSelectedAnnotations, createVertexMarkers, EditPolygon, createEditPolygon, selectNewVertex, insertNewVertex, updateSelectedVertex, deleteSelectedVertex, cleanUpEditPolygon, unselectVertex } from '../utils/annotations'
+import { totalAnnotations, shiftSelectedAnnotations, createVertexMarkers, EditPolygon, EditPolyline, createEditPolygon, insertNewVertex, updateSelectedVertex, deleteSelectedVertex, cleanUpEditPolygon, unselectVertex, cleanUpEditPolyline, createEditPolyline, deleteSelectedVertexPL, insertNewVertexPL, updateSelectedVertexPL } from '../utils/annotations'
 import { CourseData, HoleData, Annotation } from '../types/map'
 
 interface MapViewProps {
@@ -54,6 +54,7 @@ function MapView({
   const [markerInstances, setMarkerInstances] = useState<Map<string, google.maps.Marker>>(new Map())
   const [polygonInstances, setPolygonInstances] = useState<Map<string, google.maps.Polygon>>(new Map())
   const [polylineInstances, setPolylineInstances] = useState<Map<string, google.maps.Polyline>>(new Map())
+  const [polylineVertexInstances, setPolylineVertexInstances] = useState<Map<string, google.maps.Marker[]>>(new Map())
   
   // Refs to track current instance Maps (for event handlers with stale closures)
   const markerInstancesRef = useRef<Map<string, google.maps.Marker>>(new Map())
@@ -69,6 +70,7 @@ function MapView({
 
   //const [editingPolygon, setEditingPolygon] = useState<EditPolygon | null>(null)
   const editingPolygonRef = useRef<EditPolygon | null>(null)
+  const editingPolylineRef = useRef<EditPolyline | null>(null)
 
   const [uiMode, setUiMode] = useState<"shift" | "edit">("shift")
   const uiModeRef = useRef<"shift" | "edit">("shift")
@@ -203,10 +205,25 @@ function MapView({
     })
   }
 
+  const setAllMarkerClickability = (clickable: boolean) => {
+    console.log("[set clickability] marker instances: ", markerInstancesRef.current);
+    markerInstancesRef.current.forEach((marker, appId) => {
+      marker.setOptions({ clickable: clickable });
+    })
+  }
+
   const setAllPolygonClickability = (clickable: boolean) => {
     console.log("[set clickability] polygon instances: ", polygonInstancesRef.current);
     polygonInstancesRef.current.forEach((polygon, appId) => {
-      polygon.setOptions({ clickable: clickable });
+
+        polygon.setOptions({ clickable: clickable });
+    })
+  }
+
+  const setAllPolylineClickability = (clickable: boolean) => {
+    console.log("[set clickability] polyline instances: ", polylineInstancesRef.current);
+    polylineInstancesRef.current.forEach((polyline, appId) => {
+      polyline.setOptions({ clickable: clickable });
     })
   }
 
@@ -265,13 +282,30 @@ function MapView({
     })
   }
 
+  const markerIdFilterPredicate = (id: string): boolean => {
+    // basic case
+    if (id.endsWith('Marker')) { return true; }
+    // tree case: check that it contains "-Polyline-"
+    if (id.includes('-Polyline-')) { return true; }
+    return false;
+  }
+
   // can also select annotations via the checkboxes
   const handleBatchSelection = (annotIds: string[], isSelected: boolean) => {
 
     // filter annotations by google type (Marker/Polygon/Polyline)
-    const markerIds = annotIds.filter(id => id.endsWith('Marker'))
+    const markerIds = annotIds.filter(markerIdFilterPredicate)
     const polygonIds = annotIds.filter(id => id.endsWith('Polygon'))
     const polylineIds = annotIds.filter(id => id.endsWith('Polyline'))
+
+    // special case: if the trees polyline is selected, replace that id with all individual tree markers
+    for (let polyId of polylineIds) {
+      for (let markerInstanceId of markerInstancesRef.current.keys()) {
+        if (markerInstanceId.startsWith(polyId)) {
+          markerIds.push(markerInstanceId);
+        }
+      }
+    }
 
     setSelectedMarkers(prev => {
       const newSet = new Set(prev)
@@ -297,6 +331,7 @@ function MapView({
       return newSet
     })
 
+    /*
     setSelectedPolylines(prev => {
       const newSet = new Set(prev)
       polylineIds.map(polylineId => {
@@ -308,7 +343,9 @@ function MapView({
       })
       return newSet
     })
+    */
   }
+
   const handleSingleAnnotationSelect = (annotId: string, isSelected: boolean) => {
     handleBatchSelection([annotId], isSelected)
   }
@@ -378,7 +415,9 @@ function MapView({
   const isPolylineSelected = (polylineId: string) => selectedPolylines.has(polylineId)
 
   // Check if annotation is selected
-  const isAnnotationSelected = (annot: Annotation) => selectedMarkers.has(annot.appId) || selectedPolygons.has(annot.appId) || selectedPolylines.has(annot.appId)
+  const isAnnotationSelected = (annotAppId: string) => selectedMarkers.has(annotAppId) || selectedPolygons.has(annotAppId) || selectedPolylines.has(annotAppId)
+
+  const isAnyPolySelected = () => selectedPolygons.size > 0 || selectedPolylines.size > 0
 
   // utility function to create and organize annotations
   const _collectAnnotation = (
@@ -389,29 +428,35 @@ function MapView({
     polylines: Map<string, google.maps.Polyline>,
     isGlobal: boolean
   ) => {
-    const annotInstance = createAnnotation(annot, gmap, isGlobal)
-    const appId = annotInstance.get("app_id")
+    const annotInstances = createAnnotation(annot, gmap, isGlobal)
+    for(let annotInstance of annotInstances) {
     
-    if(annotInstance instanceof google.maps.Marker) {
-      markers.set(appId, annotInstance)
-      annotInstance.addListener('click', () => {
-        console.log(`✓ Marker ${appId} clicked`)
-        handleMarkerClick(appId)
-      })
-    }
-    else if(annotInstance instanceof google.maps.Polygon) {
-      polygons.set(appId, annotInstance)
-      annotInstance.addListener('click', () => {
-        console.log(`✓ Polygon ${annot.id} clicked`)
-        handlePolygonClick(appId)
-      })
-    }
-    else if(annotInstance instanceof google.maps.Polyline) {
-      polylines.set(appId, annotInstance)
-      annotInstance.addListener('click', () => {
-        console.log(`✓ Polyline ${annot.id} clicked`)
-        handlePolylineClick(appId)
-      })
+      if(annotInstance === null) { return; } // ignore polylines for now
+
+      const appId = annotInstance.get("app_id")
+      
+      if(annotInstance instanceof google.maps.Marker) {
+        markers.set(appId, annotInstance)
+        annotInstance.addListener('click', () => {
+          console.log(`✓ Marker ${appId} clicked`)
+          handleMarkerClick(appId)
+        })
+      }
+      else if(annotInstance instanceof google.maps.Polygon) {
+        polygons.set(appId, annotInstance)
+        annotInstance.addListener('click', () => {
+          console.log(`✓ Polygon ${annot.id} clicked`)
+          handlePolygonClick(appId)
+        })
+      }
+      else if(annotInstance instanceof google.maps.Polyline) {
+        if(annotInstance.getPath().getLength() == 0) { return; } // hole folders have empty tree linestrings for some reason
+        polylines.set(appId, annotInstance)
+        annotInstance.addListener('click', () => {
+          console.log(`✓ Polyline ${annot.id} clicked`)
+          handlePolylineClick(appId)
+        })
+      }
     }
     
   }
@@ -428,6 +473,7 @@ function MapView({
     const newMarkers = new Map<string, google.maps.Marker>()
     const newPolygons = new Map<string, google.maps.Polygon>()
     const newPolylines = new Map<string, google.maps.Polyline>()
+    const newPolylineVerts = new Map<string, google.maps.Marker[]>()
     for(let hole of courseData.holes) {
       for(let annot of hole.annotations) {
         _collectAnnotation(annot, map, newMarkers, newPolygons, newPolylines, false)
@@ -443,16 +489,48 @@ function MapView({
     setPolygonInstances(newPolygons)
     console.log(`✓ Created ${newPolygons.size} polygons`)
 
+    /*
     setPolylineInstances(newPolylines)
     console.log(`✓ Created ${newPolylines.size} polylines`)
 
+    let plVerts: google.maps.Marker[] = [];
+
+    for(let plKey of newPolylines.keys()) {
+      plVerts = createVertexMarkers(newPolylines.get(plKey)!, map!, "brown");
+
+      // polyline vertex markers should always be visible,
+      // but only clickable if UI is in edit mode
+      plVerts.forEach(vert => {
+        vert.setOptions({ clickable: true });
+        vert.addListener('click', () => {
+          console.log(`✓ Polyline vertex ${vert.get("app_id")} clicked`)
+          // select this polyline for editing
+          handlePolylineClick(plKey);
+          if ((uiModeRef.current === "edit") && (!isAnyPolySelected())) {
+            setIsVertexMarkerDragging(true);
+            setDraggedVertexMarker(vert);
+          }
+        });
+      });
+      newPolylineVerts.set(plKey, plVerts);
+    }
+    setPolylineVertexInstances(newPolylineVerts)
+    console.log(`✓ Created ${newPolylineVerts.size} polyline vertex instances`)
+    */
+
     // check for null map references
     // and also override the right-click handler for everyone
+    // and also get a rough estimate of the min/max lat/lng bounds
+    let minLat = 90.0, maxLat = -90.0, minLng = 180.0, maxLng = -180.0;
     newMarkers.forEach(marker => {
       if (marker.getMap() === null) {
         console.error(`Marker ${marker.get("app_id")} has no map reference`)
       }
       marker.addListener('rightclick', (e: google.maps.MapMouseEvent) => { handleRightClick(e);})
+      minLat = Math.min(minLat, marker.getPosition()!.lat());
+      maxLat = Math.max(maxLat, marker.getPosition()!.lat());
+      minLng = Math.min(minLng, marker.getPosition()!.lng());
+      maxLng = Math.max(maxLng, marker.getPosition()!.lng());
     })
     newPolygons.forEach(polygon => {
       if (polygon.getMap() === null) {
@@ -466,6 +544,12 @@ function MapView({
       }
       polyline.addListener('rightclick', (e: google.maps.MapMouseEvent) => { handleRightClick(e);})
     })
+
+    // pan and zoom the map so that the whole course is visible
+    if (map) {
+      map.panTo({ lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 });
+      map.setZoom(15);
+    }
 
     // Cleanup function
     return () => {
@@ -491,17 +575,26 @@ function MapView({
   // Update polygon styles when selection changes
   // Also need to enforce rules for edit mode
   useEffect(() => {
-    if (polygonInstances.size === 0) return
 
     polygonInstances.forEach((polygon, appId) => {
       const isSelected = isPolygonSelected(appId)
       setSelectionStyles(polygon, isSelected);
     })
 
+    polylineInstances.forEach((polyline, appId) => {
+      const isSelected = isPolylineSelected(appId)
+      setSelectionStyles(polyline, isSelected);
+    })
+
     if (uiMode === "edit") {
-      if (selectedPolygons.size == 0) {
-        // one poly selected ==> clean state. all polygons should be clickable
+
+      // edit mode is only for polys
+      setAllMarkerClickability(false)
+
+      if (!isAnyPolySelected()) {
+        // one polygon/polyline selected ==> clean state. all polys should be clickable
         setAllPolygonClickability(true)
+        setAllPolylineClickability(true)
 
         // remove all vertex markers
         if (editingPolygonRef.current !== null) {
@@ -509,20 +602,27 @@ function MapView({
           cleanUpEditPolygon(editingPolygonRef.current!)
           editingPolygonRef.current = null;
         }
+        if (editingPolylineRef.current !== null) {
+          console.log("cleaning up edit polyline");
+          cleanUpEditPolyline(editingPolylineRef.current!)
+          editingPolylineRef.current = null;
+        }
       } else {
         // clean state ==> one poly selected.
         // selected poly should be clickable in order to deselect it
         setAllPolygonClickability(false)
+        setAllPolylineClickability(false)
         selectedPolygons.forEach(polygonId => {
           polygonInstances.get(polygonId)!.setOptions({ clickable: true })
           editingPolygonRef.current = createEditPolygon(polygonInstances.get(polygonId)!, setIsVertexMarkerDragging, setDraggedVertexMarker)
         })
-
-        // display vertex markers
-        //createVertexMarkers(polygonInstances.get(Array.from(selectedPolygons)[0])!, map!)
+        selectedPolylines.forEach(polylineId => {
+          polylineInstances.get(polylineId)!.setOptions({ clickable: true })
+          editingPolylineRef.current = createEditPolyline(polylineInstances.get(polylineId)!, setIsVertexMarkerDragging, setDraggedVertexMarker)
+        })
       }
     }
-  }, [selectedPolygons, polygonInstances])
+  }, [selectedPolygons, polygonInstances, selectedPolylines, polylineInstances])
 
   // Update polyline styles when selection changes
   useEffect(() => {
@@ -595,6 +695,17 @@ function MapView({
       editingPolygonRef.current = null;
     }
     setAllPolygonClickability(true)
+    setAllPolylineClickability(true)
+    if (uiModeRef.current !== "edit") {
+      setAllMarkerClickability(true)
+    } else {
+      setAllMarkerClickability(false)
+    }
+    polylineVertexInstances.forEach(verts => {
+      verts.forEach(vert => {
+        vert.setOptions({ clickable: uiModeRef.current === "edit" });
+      });
+    })
     setIsVertexMarkerDragging(false)
     setDraggedVertexMarker(null)
   }, [uiMode])
@@ -648,12 +759,20 @@ function MapView({
         
         // delete key can delete a selected vertex
         if (event.key === 'Delete') {
-          deleteSelectedVertex(editingPolygonRef.current!)
+          if (editingPolygonRef.current !== null) {
+            deleteSelectedVertex(editingPolygonRef.current!)
+          } else {
+            deleteSelectedVertexPL(editingPolylineRef.current!)
+          }
         }
 
         // insert key can insert a new vertex
         if (event.key === 'Insert') {
-          insertNewVertex(editingPolygonRef.current!)
+          if (editingPolygonRef.current !== null) {
+            insertNewVertex(editingPolygonRef.current!)
+          } else {
+            insertNewVertexPL(editingPolylineRef.current!)
+          }
         }
 
       }
@@ -667,6 +786,54 @@ function MapView({
       window.removeEventListener('keydown', handleKeyDown, true)
     }
   }, []) // Empty dependency array - set up once on mount
+
+  function renderGlobalAnnotations(annotations: Annotation[]) {
+
+    // separate tree annotations from other annotations
+    let treeData: [string, string, string][] = [];
+    let otherAnnots: Annotation[] = [];
+    annotations.forEach((annot) => {
+      if(annot.annotType !== "trees") {
+        otherAnnots.push(annot);
+      } else {
+        for(let i = 0; i < annot.rawCoords.length; i += 2) {
+          treeData.push([`global-${annot.id}-${i}`, annot.id+"-"+i.toString(), annot.appId+"-"+i.toString()]);
+        }
+      }
+    });
+
+    return (
+      <div style={{ paddingLeft: '35px', marginTop: '5px' }}>
+        {otherAnnots.map((annot) => (      
+          <div key={`global-${annot.id}`} style={{ display: 'flex', alignItems: 'center', marginBottom: '3px' }}>
+            <input
+              type="checkbox"
+              id={`annot-global-${annot.id}`}
+              style={{ marginRight: '8px', cursor: 'pointer' }}
+              checked={isAnnotationSelected(annot.appId)}
+              onChange={(e) => handleSingleAnnotationSelect(annot.appId, e.target.checked)}
+              disabled={uiMode === "edit" && (editingPolygonRef.current !== null) && !isAnnotationSelected(annot.appId)}
+            />
+            <label htmlFor={`annot-global-${annot.id}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
+              {annot.annotType}
+            </label>
+          </div>
+        ))}
+        {treeData.map((tree: [string, string, string]) => (
+          <div key={tree[0]} style={{ display: 'flex', alignItems: 'center', marginBottom: '3px' }}>
+            <input
+              type="checkbox"
+              id={`annot-`+tree[0]}
+              style={{ marginRight: '8px', cursor: 'pointer' }}
+              checked={isAnnotationSelected(tree[2])}
+              onChange={(e) => handleSingleAnnotationSelect(tree[2], e.target.checked)}
+              disabled={uiMode === "edit" && (editingPolygonRef.current !== null) && !isAnnotationSelected(tree[2])} />
+            <label htmlFor={`annot-`+tree[0]} style={{ cursor: 'pointer', fontSize: '13px' }}>tree</label>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
 
   return (
@@ -794,7 +961,7 @@ function MapView({
               onChange={(e) => handleSelectAllAnnotations(e.target.checked)}
             />
             <label htmlFor="select-all" style={{ cursor: 'pointer', fontWeight: 'bold' }}>
-              All annotations ({totalAnnotations(courseData)})
+              All annotations
             </label>
           </div>
 
@@ -833,29 +1000,13 @@ function MapView({
                 disabled={uiMode === "edit"}
               />
               <label htmlFor="folder-global" style={{ cursor: 'pointer', fontWeight: 'bold' }}>
-                Global ({courseData.annotations.length})
+                Global
               </label>
             </div>
             
             {/* Global Annotations */}
             {expandedFolders.has('global') && (
-              <div style={{ paddingLeft: '35px', marginTop: '5px' }}>
-                {courseData.annotations.map((annot) => (
-                  <div key={`global-${annot.id}`} style={{ display: 'flex', alignItems: 'center', marginBottom: '3px' }}>
-                    <input
-                      type="checkbox"
-                      id={`annot-global-${annot.id}`}
-                      style={{ marginRight: '8px', cursor: 'pointer' }}
-                      checked={isAnnotationSelected(annot)}
-                      onChange={(e) => handleSingleAnnotationSelect(annot.appId, e.target.checked)}
-                      disabled={uiMode === "edit" && (editingPolygonRef.current !== null) && !isAnnotationSelected(annot)}
-                    />
-                    <label htmlFor={`annot-global-${annot.id}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
-                      {annot.annotType}
-                    </label>
-                  </div>
-                ))}
-              </div>
+              renderGlobalAnnotations(courseData.annotations)
             )}
           </div>
 
@@ -909,9 +1060,9 @@ function MapView({
                         type="checkbox"
                         id={`annot-hole-${hole.id}-${annot.id}`}
                         style={{ marginRight: '8px', cursor: 'pointer' }}
-                        checked={isAnnotationSelected(annot)}
+                        checked={isAnnotationSelected(annot.appId)}
                         onChange={(e) => handleSingleAnnotationSelect(annot.appId, e.target.checked)}
-                        disabled={uiMode === "edit" && (editingPolygonRef.current !== null) && !isAnnotationSelected(annot)}
+                        disabled={uiMode === "edit" && (editingPolygonRef.current !== null) && !isAnnotationSelected(annot.appId)}
                       />
                       <label htmlFor={`annot-hole-${hole.id}-${annot.id}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
                         {annot.annotType}

@@ -9,7 +9,13 @@ import type { MarkerStyle, PolygonStyle, PolylineStyle, CircleStyle, Annotation,
 
 
 export const SELECTION_STYLING = {
-  'ICONOPACITY': [0.3, 1.0],
+  'ICONOPACITY': {
+    'tee': [0.3, 1.0],
+    'cup': [0.3, 1.0],
+    'drop': [0.3, 1.0],
+    'tree': [0.45, 1.0],
+  },
+
 
   'FILLCOLOR': {
     'teebox': ['#FFFF00', '#FFFF00'],
@@ -83,6 +89,12 @@ export const markerImgStyles: Record<string, google.maps.Icon> = {
     scaledSize: { width: 48, height: 48 } as google.maps.Size,
     anchor: { x: 24, y: 45 } as google.maps.Point,
   },
+
+  tree: {
+    url: "/images/tree_icon.png",
+    scaledSize: { width: 36, height: 36 } as google.maps.Size,
+    anchor: { x: 18, y: 34 } as google.maps.Point,
+  }
 }
 
 // ============================================================================
@@ -102,17 +114,22 @@ export const markerStyles: Record<string, MarkerStyle> = {
   tee: {
     icon: markerImgStyles.tee,
     label: { ...labelStyles.default, text: 'tee' },
-    opacity: SELECTION_STYLING.ICONOPACITY[0],
+    opacity: SELECTION_STYLING.ICONOPACITY.tee[0],
   },
   cup: {
     icon: markerImgStyles.cup,
     label: { ...labelStyles.default, text: 'cup' },
-    opacity: SELECTION_STYLING.ICONOPACITY[0],
+    opacity: SELECTION_STYLING.ICONOPACITY.cup[0],
   },
   drop: {
     icon: markerImgStyles.tee,
     label: { ...labelStyles.default, text: 'drop' },
-    opacity: SELECTION_STYLING.ICONOPACITY[0],
+    opacity: SELECTION_STYLING.ICONOPACITY.drop[0],
+  },
+  tree: {
+    icon: markerImgStyles.tree,
+    //label: { ...labelStyles.default, text: 'tree' },
+    opacity: SELECTION_STYLING.ICONOPACITY.tree[0],
   },
 }
 
@@ -128,6 +145,7 @@ export const polygonStyles: Record<string, PolygonStyle> = {
     strokeColor: SELECTION_STYLING.STROKECOLOR.fairway[0],
     strokeOpacity: SELECTION_STYLING.STROKEOPACITY.fairway[0],
     strokeWeight: SELECTION_STYLING.STROKEWEIGHT.fairway[0],
+    zIndex: 100,
   },
 
   cutout: {
@@ -136,6 +154,7 @@ export const polygonStyles: Record<string, PolygonStyle> = {
     strokeColor: SELECTION_STYLING.STROKECOLOR.cutout[0],
     strokeOpacity: SELECTION_STYLING.STROKEOPACITY.cutout[0],
     strokeWeight: SELECTION_STYLING.STROKEWEIGHT.cutout[0],
+    zIndex: 200,
   },
 
   green: {
@@ -144,6 +163,7 @@ export const polygonStyles: Record<string, PolygonStyle> = {
     strokeColor: SELECTION_STYLING.STROKECOLOR.green[0],
     strokeOpacity: SELECTION_STYLING.STROKEOPACITY.green[0],
     strokeWeight: SELECTION_STYLING.STROKEWEIGHT.green[0],
+    zIndex: 110,
   },
 
   water: {
@@ -152,6 +172,7 @@ export const polygonStyles: Record<string, PolygonStyle> = {
     strokeColor: SELECTION_STYLING.STROKECOLOR.water[0],
     strokeOpacity: SELECTION_STYLING.STROKEOPACITY.water[0],
     strokeWeight: SELECTION_STYLING.STROKEWEIGHT.water[0],
+    zIndex: 100,
   },
 
   asphalt: {
@@ -160,6 +181,7 @@ export const polygonStyles: Record<string, PolygonStyle> = {
     strokeColor: SELECTION_STYLING.STROKECOLOR.asphalt[0],
     strokeOpacity: SELECTION_STYLING.STROKEOPACITY.asphalt[0],
     strokeWeight: SELECTION_STYLING.STROKEWEIGHT.asphalt[0],
+    zIndex: 200,
   },
 
   bunker: {
@@ -168,6 +190,7 @@ export const polygonStyles: Record<string, PolygonStyle> = {
     strokeColor: SELECTION_STYLING.STROKECOLOR.bunker[0],
     strokeOpacity: SELECTION_STYLING.STROKEOPACITY.bunker[0],
     strokeWeight: SELECTION_STYLING.STROKEWEIGHT.bunker[0],
+    zIndex: 200,
   },
 
   teebox: {
@@ -176,6 +199,7 @@ export const polygonStyles: Record<string, PolygonStyle> = {
     strokeColor: SELECTION_STYLING.STROKECOLOR.teebox[0],
     strokeOpacity: SELECTION_STYLING.STROKEOPACITY.teebox[0],
     strokeWeight: SELECTION_STYLING.STROKEWEIGHT.teebox[0],
+    zIndex: 200,
   },
 
   ob: {
@@ -184,6 +208,7 @@ export const polygonStyles: Record<string, PolygonStyle> = {
     strokeColor: SELECTION_STYLING.STROKECOLOR.ob[0],
     strokeOpacity: SELECTION_STYLING.STROKEOPACITY.ob[0],
     strokeWeight: SELECTION_STYLING.STROKEWEIGHT.ob[0],
+    zIndex: 1,
   },
 
   default: {
@@ -278,6 +303,10 @@ export function getAnnotationTypes(): Record<string, AnnotationType> {
       annotClass: google.maps.Marker,
       style: markerStyles.cup
     },
+    tree: {
+      annotClass: google.maps.Marker,
+      style: markerStyles.tree
+    },
   }
 }
 
@@ -326,18 +355,41 @@ export function buildAppId(annotRecord: Annotation, isGlobal: boolean): string {
   return appId;
 }
 
-export function createAnnotation(annotRecord: Annotation, map: google.maps.Map, isGlobal: boolean): google.maps.Polygon | google.maps.Polyline | google.maps.Marker {
+export function createAnnotation(annotRecord: Annotation, map: google.maps.Map, isGlobal: boolean): (google.maps.Polygon | google.maps.Polyline | google.maps.Marker)[] {
   const annotType = getAnnotationTypes()[annotRecord.annotType]
-  let annotInstance = new annotType.annotClass({
-    paths: [annotRecord.rawCoords],
-    map: map,
-    ..._buildGeo(annotRecord.rawCoords, annotType.annotClass),
-    ...annotType.style
-  })
-  // build application-level id that encodes database id and google type (Marker/Polygon/Polyline)
-  annotInstance.set("app_id", buildAppId(annotRecord, isGlobal))
-  annotInstance.set("annot_type", annotRecord.annotType)
-  return annotInstance
+
+  let annotInstances = [];
+  
+  // polylines are a special case. we only accept tree polylines, which become individual markers
+  if(annotRecord.annotType === "trees") {
+    for(let i = 0; i < annotRecord.rawCoords.length; i += 2) {
+      let marker = new google.maps.Marker({
+        position: new google.maps.LatLng(annotRecord.rawCoords[i+1], annotRecord.rawCoords[i]),
+        map: map,
+        ...markerStyles.tree
+      })
+
+      // build application-level id that encodes database id and google type (Marker/Polygon/Polyline)
+      marker.set("app_id", buildAppId(annotRecord, isGlobal)+"-"+i.toString())
+      marker.set("annot_type", "tree")
+      annotInstances.push(marker);
+    }
+  } else {
+
+    let annotInstance = new annotType.annotClass({
+      paths: [annotRecord.rawCoords],
+      map: map,
+      ..._buildGeo(annotRecord.rawCoords, annotType.annotClass),
+      ...annotType.style
+    })
+
+    // build application-level id that encodes database id and google type (Marker/Polygon/Polyline)
+    annotInstance.set("app_id", buildAppId(annotRecord, isGlobal))
+    annotInstance.set("annot_type", annotRecord.annotType)
+    annotInstances.push(annotInstance);
+  }
+
+  return annotInstances;
 }
 
 export function setSelectionStyles(annotInstance: google.maps.Polygon | google.maps.Polyline | google.maps.Marker, isSelected: boolean) {
@@ -347,7 +399,12 @@ export function setSelectionStyles(annotInstance: google.maps.Polygon | google.m
   }
   const idx = isSelected ? 1 : 0;
   if(annotInstance instanceof google.maps.Marker) {
-    annotInstance.setOpacity(SELECTION_STYLING.ICONOPACITY[idx]);
+    // Type guard: ensure annotType is a valid key
+    const validMarkerTypes = ['tee', 'cup', 'drop', 'tree'] as const;
+    type ValidMarkerType = typeof validMarkerTypes[number];
+    const typedAnnotType = (validMarkerTypes.includes(annotType as ValidMarkerType) ? annotType : 'tee') as ValidMarkerType;
+    
+    annotInstance.setOpacity(SELECTION_STYLING.ICONOPACITY[typedAnnotType][idx]);
   }
   else if(annotInstance instanceof google.maps.Polygon) {
     // Type guard: ensure annotType is a valid key

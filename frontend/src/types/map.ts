@@ -12,6 +12,8 @@ export interface PolygonStyle {
   strokeColor: string;
   strokeOpacity: number;
   strokeWeight: number;
+  zIndex?: number;
+  clickable?: boolean;
 }
 
 export interface PolylineStyle {
@@ -39,7 +41,7 @@ export interface LabelStyle {
 export interface Annotation {
   id: number;
   holeId: number;
-  annotType: 'fairway' | 'fairway_hole' | 'green' | 'green_hole' | 'ob' | 'teebox' | 'bunker' | 'bunker_hole' | 'water' | 'water_hole' | 'asphalt' | 'drop' | 'trees' | 'tee' | 'cup'
+  annotType: 'fairway' | 'fairway_hole' | 'green' | 'green_hole' | 'ob' | 'teebox' | 'bunker' | 'bunker_hole' | 'water' | 'water_hole' | 'asphalt' | 'drop' | 'trees' | 'tree' | 'tee' | 'cup'
   numCoords: number;
   rawCoords: number[];
   appId: string; // frontend decoration

@@ -4,12 +4,18 @@ export interface VertexMarker {
   prev: VertexMarker | null;
   next: VertexMarker | null;
   marker: google.maps.Marker;
-  ctxt: EditPolygon | null;
+  ctxt: EditPolygon | EditPolyline | null;
   index: number;
 }
 
 export interface EditPolygon {
   ctxt: google.maps.Polygon;
+  headVertexMarker: VertexMarker | null;
+  selectedVertexMarker: VertexMarker | null;
+}
+
+export interface EditPolyline {
+  ctxt: google.maps.Polyline;
   headVertexMarker: VertexMarker | null;
   selectedVertexMarker: VertexMarker | null;
 }
@@ -200,6 +206,205 @@ export const createEditPolygon = (polygon: google.maps.Polygon, setIsVertexMarke
   return editPolygon;
 }
 
+export const cleanUpEditPolyline = (editPolyline: EditPolyline) => {
+  console.log("cleaning up vertex markers...");
+  let vm = editPolyline.headVertexMarker!;
+  vm.marker.setMap(null);
+  vm = vm.next!;
+  while(vm !== null) {
+    vm.marker.setMap(null);
+    vm = vm.next!;
+  }
+}
+
+// delete the currently-selected vertex from the polyline
+export const deleteSelectedVertexPL = (editPolyline: EditPolyline) => {
+  
+  // can't delete it if there's only one vertex
+  if (editPolyline.headVertexMarker!.next === null) { return; }
+  
+  const path = editPolyline.ctxt.getPath();
+  const vm0 = editPolyline.selectedVertexMarker!;
+
+  // update indices of all vertices beyond this one
+  let vm_ = vm0.next;
+  while(vm_ !== null) {
+    vm_.index -= 1;
+    if (vm_.index == 0) {
+      // this must be the new head vertex
+      editPolyline.headVertexMarker = vm_;
+    }
+    vm_ = vm_.next;
+  }
+
+  path.removeAt(vm0.index);
+  vm0.marker.setMap(null);
+  let newSelectedVertex: VertexMarker | null = null;
+  if (vm0.prev !== null) {
+    newSelectedVertex = vm0.prev;
+    if (vm0.next !== null) {
+      vm0.prev.next = vm0.next;
+      vm0.next.prev = vm0.prev;
+    } else {
+      vm0.prev.next = null;
+    }
+  } else {
+    vm0.next!.prev = null;
+    newSelectedVertex = vm0.next;
+  }
+  editPolyline.selectedVertexMarker = newSelectedVertex;
+  editPolyline.selectedVertexMarker!.marker.setIcon(vertexSymbol("blue"));
+}
+
+export const insertNewVertexPL = (editPolyline: EditPolyline) => {
+  if (editPolyline.selectedVertexMarker === null) { return; }
+  const path = editPolyline.ctxt.getPath();
+  const vm0 = editPolyline.selectedVertexMarker;
+
+  let newLat: number = 0;
+  let newLng: number = 0;
+  let newIdx: number = editPolyline.selectedVertexMarker.index + 1
+  let newPrev: VertexMarker | null = null;
+  let newNext: VertexMarker | null = null;
+
+  if (path.getLength() == 1) {
+    // degenerate case: length-1 linestring
+    newLng = vm0.marker.getPosition()!.lng();
+    newLat = vm0.marker.getPosition()!.lat() + 0.0005;
+    newPrev = vm0;
+  } else {
+    let ll0: google.maps.LatLng | null = null;
+    let ll1: google.maps.LatLng | null = null;
+    if (vm0.next === null) {
+      // degenerate case: last vertex in path is selected
+      ll0 = vm0.prev!.marker.getPosition()!;
+      ll1 = vm0.marker.getPosition()!
+      newIdx -= 1;
+      newNext = vm0;
+      newPrev = vm0.prev!;
+    } else {
+      // normal case: put new one between selected and next
+      ll0 = vm0.marker.getPosition()!;
+      ll1 = vm0.next.marker.getPosition()!;
+      newNext = vm0.next!;
+      newPrev = vm0;
+    }
+    newLng = (ll0.lng() + ll1.lng()) / 2;
+    newLat = (ll0.lat() + ll1.lat()) / 2;
+  }
+
+  const llMid: google.maps.LatLng = new google.maps.LatLng(newLat, newLng);
+  path.insertAt(newIdx, llMid);
+  const newVM = {
+    prev: newPrev,
+    next: newNext,
+    marker: new google.maps.Marker({
+      position: llMid,
+      map: editPolyline.ctxt.getMap(),
+    }),
+    ctxt: editPolyline,
+    index: newIdx,
+  };
+
+  // update linked list
+  newVM.prev.next = newVM;
+  if (newVM.next !== null) {
+    newVM.next.prev = newVM;
+  }
+
+  // need to update every index beyond this one
+  let vm: VertexMarker = newVM;
+  while(vm.next !== null) {
+    vm = vm.next!;
+    vm!.index += 1;
+  }
+
+  // update marker colors
+  editPolyline.selectedVertexMarker.marker.setIcon(vertexSymbol("white"));
+  editPolyline.selectedVertexMarker = newVM;
+  newVM.marker.setIcon(vertexSymbol("blue"));
+}
+
+export const updateSelectedVertexPL = (editPolyline: EditPolyline, latLng: google.maps.LatLng) => {
+  editPolyline.selectedVertexMarker!.marker.setPosition(latLng);
+  const path = editPolyline.ctxt.getPath();
+  path.setAt(editPolyline.selectedVertexMarker!.index, latLng);
+}
+
+const handleVertexClickPL = (editPolyline: EditPolyline, vertexMarker: VertexMarker) => {
+  // nothing to do if the vertex is already selected
+  if (vertexMarker === editPolyline.selectedVertexMarker) { return; }
+
+  // unselect the previously selected vertex, if applicable
+  if (editPolyline.selectedVertexMarker !== null) {
+    editPolyline.selectedVertexMarker.marker.setIcon(vertexSymbol("white"));
+  }
+
+  // select the new vertex
+  editPolyline.selectedVertexMarker = vertexMarker;
+  editPolyline.selectedVertexMarker.marker.setIcon(vertexSymbol("blue"));
+
+  // ensure parent polyline is not clickable
+  editPolyline.ctxt.setOptions({ clickable: false });
+}
+
+export const createEditPolyline = (polyline: google.maps.Polyline, setIsVertexMarkerDragging: (isDragging: boolean) => void, setDraggedVertexMarker: (marker: google.maps.Marker | null) => void) => {
+  //const path = polygon.getPath();
+  
+  const editPolyline: EditPolyline = {
+    ctxt: polyline,
+    headVertexMarker: null,
+    selectedVertexMarker: null,
+  }
+  
+  const mapMarkers = createVertexMarkers(polyline, polyline.getMap()!);
+  const vMarkers: VertexMarker[] = [];
+  for (let i = 0; i < mapMarkers.length; i++) {
+    const vMarker = {
+      prev: null,
+      next: null,
+      marker: mapMarkers[i],
+      ctxt: editPolyline,
+      index: i,
+    }
+    vMarkers.push(vMarker);
+    mapMarkers[i].set("app_id", crypto.randomUUID());
+  }
+  for (let i=0; i < vMarkers.length; i++) {
+    vMarkers[i].prev = i==0 ? null : vMarkers[i-1];
+    vMarkers[i].next = null;
+  }
+
+  editPolyline.headVertexMarker = vMarkers[0];
+  
+  for (let i = 0; i < vMarkers.length; i++) {
+    if(i < vMarkers.length - 1) {
+      vMarkers[i].next = vMarkers[i+1];
+    }
+
+    vMarkers[i].marker.addListener('click', () => {
+      //console.log("[debug map] vertex marker clicked. map = ", editPolygon.vertexMarkers[i].marker.getMap());
+      //console.log("[debug vertexMarkers] editPolygon.vertexMarkers = ", editPolygon.vertexMarkers);
+      
+      handleVertexClickPL(editPolyline, vMarkers[i]);
+
+      setIsVertexMarkerDragging(true);
+      setDraggedVertexMarker(vMarkers[i].marker);
+
+    });
+  }
+
+  // sanity check: all vertex markers should be on the same map
+  const map = vMarkers[0].marker.getMap();
+  vMarkers.forEach(vm => {
+    if (vm.marker.getMap() !== map) {
+      console.error("Vertex marker is on a different map than the first one");
+    }
+  });
+
+  return editPolyline;
+}
+
 export const totalAnnotations = (courseData: CourseData) => {
   return courseData.annotations.length + courseData.holes.reduce((acc, hole) => acc + hole.annotations.length, 0)
 }
@@ -265,35 +470,28 @@ const vertexSymbol = (color: string) => {
     }
 }
 
-export const createVertexMarkers = (polygon: google.maps.Polygon, map: google.maps.Map): google.maps.Marker[] => {
-    const path = polygon.getPath(); // MVCArray<LatLng>
+export const createVertexMarkers = (geom: google.maps.Polygon | google.maps.Polyline, map: google.maps.Map, fillColor: string = "white"): google.maps.Marker[] => {
+    const path = geom.getPath(); // MVCArray<LatLng>
     const markers: google.maps.Marker[] = [];
-    console.log("creating vertex markers for polygon: ", polygon.get("app_id"));
+    console.log("creating vertex markers for polygon/polyline: ", geom.get("app_id"));
 
-    // don't repeat a copy of the first vertex
     let n = path.getLength();
-    if (isSamePoint(path.getAt(0), path.getAt(path.getLength()-1))) { n = n - 1; }
+
+    // if polygon,don't repeat a copy of the first vertex
+    if(geom instanceof google.maps.Polygon) {
+      if (isSamePoint(path.getAt(0), path.getAt(path.getLength()-1))) { n = n - 1; }
+    }
 
     for (let i = 0; i < n; i++) {
-      //console.log("vertex: ", path.getAt(i).lat(), path.getAt(i).lng(), " index: ", i);
             
       const marker = new google.maps.Marker({
           position: path.getAt(i),
           map: map, // Explicitly set the map
-          clickable: true, // Must be true for click listener to work
+          clickable: geom instanceof google.maps.Polygon, // Must be true for click listener to work
           draggable: false, // Can be set to true later for vertex editing
-          icon: vertexSymbol("white"),
+          icon: vertexSymbol(fillColor),
           zIndex: 1000, // Ensure markers appear above polygons
         });
-
-        /*
-        marker.addListener('click', () => {
-            console.log(`Vertex marker ${i} clicked`);
-            marker.setIcon(vertexSymbol("blue"));
-            //setIsVertexMarkerDragging(true);
-            //setDraggedVertexMarker(marker);
-        });
-        */
 
         markers.push(marker);
     }
