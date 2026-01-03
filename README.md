@@ -215,72 +215,6 @@ You should see a beautiful landing page with a status card showing the backend c
 - `npx prisma db push` - Push schema changes without migrations
 - `npx prisma migrate status` - Check migration status
 
-## API Endpoints
-
-### Health Check
-- **GET** `/api/health` - Check server and database status
-
-### Markers
-- **GET** `/api/markers` - Get all markers
-- **POST** `/api/markers` - Create a new marker
-  ```json
-  {
-    "label": "Marker A",
-    "latitude": 38.9941228,
-    "longitude": -77.177219,
-    "iconStyle": "default"
-  }
-  ```
-
-### Polygons
-- **GET** `/api/polygons` - Get all polygons
-- **POST** `/api/polygons` - Create a new polygon
-  ```json
-  {
-    "label": "Area 1",
-    "coordinates": [
-      {"lat": 38.99421228, "lng": -77.177419},
-      {"lat": 38.99381228, "lng": -77.177419},
-      {"lat": 38.99381228, "lng": -77.177019},
-      {"lat": 38.99421228, "lng": -77.177019}
-    ],
-    "fillColor": "#00FF00",
-    "fillOpacity": 0.3,
-    "strokeColor": "#000000",
-    "strokeWeight": 2
-  }
-  ```
-
-## Database Schema
-
-The database schema is managed by Prisma. See `backend/prisma/schema.prisma` for the complete schema definition.
-
-### Markers Table
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | SERIAL | Primary key |
-| label | VARCHAR(100) | Marker label |
-| latitude | DOUBLE PRECISION | Latitude coordinate |
-| longitude | DOUBLE PRECISION | Longitude coordinate |
-| icon_style | VARCHAR(50) | Icon style identifier |
-| created_at | TIMESTAMP | Creation timestamp |
-| updated_at | TIMESTAMP | Last update timestamp |
-
-### Polygons Table
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | SERIAL | Primary key |
-| label | VARCHAR(100) | Polygon label |
-| coordinates | JSONB | Array of {lat, lng} points |
-| fill_color | VARCHAR(7) | Fill color (hex) |
-| fill_opacity | DOUBLE PRECISION | Fill opacity (0-1) |
-| stroke_color | VARCHAR(7) | Stroke color (hex) |
-| stroke_weight | INTEGER | Stroke width |
-| created_at | TIMESTAMP | Creation timestamp |
-| updated_at | TIMESTAMP | Last update timestamp |
-
 ## Database Migrations with Prisma
 
 Prisma provides a powerful migration system to manage your database schema changes over time. All migrations are stored in `backend/prisma/migrations/` as SQL files with timestamps.
@@ -299,19 +233,7 @@ When you make changes to your Prisma schema (`backend/prisma/schema.prisma`):
 **1. Edit the schema file:**
 
 ```prisma
-// Example: Add a new field to the Marker model
-model Marker {
-  id        Int      @id @default(autoincrement())
-  label     String   @db.VarChar(100)
-  latitude  Float    @db.DoublePrecision
-  longitude Float    @db.DoublePrecision
-  iconStyle String?  @db.VarChar(50) @map("icon_style")
-  color     String?  @db.VarChar(7)   // NEW FIELD
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@map("markers")
-}
+// Example: Add a new field to a model
 ```
 
 **2. Generate the migration (Development):**
@@ -347,61 +269,6 @@ This applies all pending migrations without prompting (safe for CI/CD).
 | `npx prisma db push` | Push schema changes without migrations (prototyping) |
 | `npx prisma generate` | Regenerate Prisma Client after schema changes |
 
-### Migration Workflow Example
-
-Let's say you want to add a `description` field to the `Marker` model:
-
-**Step 1: Edit `backend/prisma/schema.prisma`**
-
-```prisma
-model Marker {
-  id          Int      @id @default(autoincrement())
-  label       String   @db.VarChar(100)
-  description String?  @db.Text          // ADD THIS
-  latitude    Float    @db.DoublePrecision
-  longitude   Float    @db.DoublePrecision
-  // ... rest of fields
-}
-```
-
-**Step 2: Create and apply the migration**
-
-```bash
-cd backend
-npx prisma migrate dev --name add_marker_description
-```
-
-**Step 3: Verify the migration**
-
-```bash
-npx prisma migrate status
-```
-
-You should see output like:
-
-```
-Database schema is up to date!
-
-1 migration found in prisma/migrations
-└─ 20251218135530_add_marker_description/
-   └─ migration.sql
-```
-
-**Step 4: Use the new field in your code**
-
-The Prisma Client is automatically regenerated, so you can immediately use the new field:
-
-```typescript
-// Create a marker with description
-const marker = await prisma.marker.create({
-  data: {
-    label: 'Home',
-    description: 'My home location',  // New field!
-    latitude: 38.9941228,
-    longitude: -77.177219
-  }
-});
-```
 
 ### Migration Best Practices
 
@@ -503,19 +370,6 @@ To run the production backend:
 cd backend
 npm start
 ```
-
-## Next Steps
-
-Some ideas to extend this application:
-- Add authentication (JWT, sessions)
-- Implement more CRUD endpoints
-- ✅ ~~Add a map integration (Google Maps, Mapbox, Leaflet)~~ - **Implemented with Google Maps**
-- ✅ ~~Use an ORM (Prisma, TypeORM)~~ - **Implemented with Prisma**
-- Add user management and permissions
-- Implement real-time features with WebSockets
-- Add unit and integration tests
-- Set up Docker containers
-- Deploy to cloud platforms (AWS, Azure, Vercel, etc.)
 
 ## License
 
