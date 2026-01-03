@@ -384,8 +384,10 @@ export function createAnnotation(annotRecord: Annotation, map: google.maps.Map, 
     })
 
     // build application-level id that encodes database id and google type (Marker/Polygon/Polyline)
-    annotInstance.set("app_id", buildAppId(annotRecord, isGlobal))
+    //annotInstance.set("app_id", buildAppId(annotRecord, isGlobal))
+    annotInstance.set("app_id", annotRecord.appId)
     annotInstance.set("annot_type", annotRecord.annotType)
+    annotInstance.set("hole_id", isGlobal ? 0 :annotRecord.holeId)
     annotInstances.push(annotInstance);
   }
 

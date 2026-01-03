@@ -4,7 +4,7 @@ import './MapView.css'
 import { markerStyles, markerImgStyles, labelStyles, createAnnotation, setSelectionStyles } from '../config/mapStyles'
 import { api } from '../utils/api'
 import { getLatStep, getLngStep } from '../utils/geo'
-import { totalAnnotations, shiftSelectedAnnotations, createVertexMarkers, EditPolygon, EditPolyline, createEditPolygon, insertNewVertex, updateSelectedVertex, deleteSelectedVertex, cleanUpEditPolygon, unselectVertex, cleanUpEditPolyline, createEditPolyline, deleteSelectedVertexPL, insertNewVertexPL, updateSelectedVertexPL } from '../utils/annotations'
+import { totalAnnotations, shiftSelectedAnnotations, createVertexMarkers, EditPolygon, EditPolyline, createEditPolygon, insertNewVertex, updateSelectedVertex, deleteSelectedVertex, cleanUpEditPolygon, unselectVertex, cleanUpEditPolyline, createEditPolyline, deleteSelectedVertexPL, insertNewVertexPL, updateSelectedVertexPL, AddingContext, createAddingContext, addVertexToAddingContext, endAddingContext } from '../utils/annotations'
 import { CourseData, HoleData, Annotation } from '../types/map'
 
 interface MapViewProps {
@@ -72,8 +72,11 @@ function MapView({
   const editingPolygonRef = useRef<EditPolygon | null>(null)
   const editingPolylineRef = useRef<EditPolyline | null>(null)
 
-  const [uiMode, setUiMode] = useState<"shift" | "edit">("shift")
-  const uiModeRef = useRef<"shift" | "edit">("shift")
+  const [uiMode, setUiMode] = useState<"shift" | "edit" | "add">("shift")
+  const uiModeRef = useRef<"shift" | "edit" | "add">("shift")
+
+  const [addingCtxt, setAddingCtxt] = useState<AddingContext | null>(null)
+  const addingCtxtRef = useRef<AddingContext | null>(null)
 
   const mapContainerStyle = {
     width: '100%',
@@ -131,12 +134,21 @@ function MapView({
     if (e.latLng) {
         console.log('Clicked at:', e.latLng.lat(), e.latLng.lng());
         if (isVertexMarkerDraggingRef.current) {
+
+          // this is for updating position of currently-selected vertex (while editing polygon)
           console.log('Vertex marker dragged')
           updateSelectedVertex(editingPolygonRef.current!, e.latLng);
           //draggedVertexMarkerRef.current!.setPosition(e.latLng)
           //setIsVertexMarkerDragging(false)
           //setDraggedVertexMarker(null)
           //setAllPolygonClickability(true)
+        } else if (uiModeRef.current === "add") {
+
+          // this is for adding a new marker, or adding the next vertex in a new polygon
+          let isActive = addVertexToAddingContext(addingCtxtRef.current!, e.latLng);
+          if (!isActive) {
+            setUiMode("shift");
+          }
         }
     }
   }
@@ -145,11 +157,18 @@ function MapView({
     if (e.latLng) {
       console.log('Right clicked at:', e.latLng.lat(), e.latLng.lng());
 
-      // this is the only way to go from vertex dragging state to polygon editing mode
-      if (isVertexMarkerDraggingRef.current !== null) {
+      if (uiModeRef.current === "edit" && isVertexMarkerDraggingRef.current !== null) {
+
+        // this is the only way to go from vertex dragging state to polygon editing mode
         setIsVertexMarkerDragging(false)
         setDraggedVertexMarker(null)
         unselectVertex(editingPolygonRef.current!)
+      } else if (uiModeRef.current === "add") {
+
+        // this is the only way to end a polygon-adding or tree-adding session
+        endAddingContext(addingCtxtRef.current!);
+        setUiMode("shift");
+        //setAddingCtxt(null);
       }
     }
   }
@@ -285,8 +304,14 @@ function MapView({
   const markerIdFilterPredicate = (id: string): boolean => {
     // basic case
     if (id.endsWith('Marker')) { return true; }
-    // tree case: check that it contains "-Polyline-"
-    if (id.includes('-Polyline-')) { return true; }
+    // tree case: check that it contains "-Polyline-" or "-Marker-"
+    if (id.includes('-Polyline-') || id.includes('-Marker-')) { return true; }
+    return false;
+  }
+
+  const polygonIdFilterPredicate = (id: string): boolean => {
+    if (id.endsWith('Polygon')) { return true; }
+    if (id.includes('-Polygon-')) { return true; }
     return false;
   }
 
@@ -295,7 +320,7 @@ function MapView({
 
     // filter annotations by google type (Marker/Polygon/Polyline)
     const markerIds = annotIds.filter(markerIdFilterPredicate)
-    const polygonIds = annotIds.filter(id => id.endsWith('Polygon'))
+    const polygonIds = annotIds.filter(polygonIdFilterPredicate)
     const polylineIds = annotIds.filter(id => id.endsWith('Polyline'))
 
     // special case: if the trees polyline is selected, replace that id with all individual tree markers
@@ -355,7 +380,7 @@ function MapView({
 
     // update checkbox states for all child annotations without triggering a re-render
     courseData?.annotations.forEach(annot => {
-      const checkbox = document.getElementById(`annot-global-${annot.id}`) as HTMLInputElement;
+      const checkbox = document.getElementById(`annot-global-${annot.appId}`) as HTMLInputElement;
       if (checkbox) {
         checkbox.checked = isSelected;
       }
@@ -386,7 +411,7 @@ function MapView({
       if (globalCB) {
         globalCB.checked = isSelected;
       }
-      const checkbox = document.getElementById(`annot-global-${annot.id}`) as HTMLInputElement;
+      const checkbox = document.getElementById(`annot-global-${annot.appId}`) as HTMLInputElement;
       if (checkbox) {
         checkbox.checked = isSelected;
       }
@@ -403,6 +428,68 @@ function MapView({
         }
       })
     })
+  }
+
+  // delete currently selected annotations
+  const handleDeleteSelectedAnnotations = () => {
+
+    // if more than one annotation is selected, show a confirmation dialog
+    let n = selectedMarkersRef.current.size + selectedPolygonsRef.current.size;
+    if (n > 1) {
+      const confirm = window.confirm("Are you sure you want to delete the "+n+" selected annotations?");
+      if (!confirm) {
+        return;
+      }
+    }
+
+    // remove markers from the map
+    selectedMarkersRef.current.forEach(markerId => {
+      markerInstancesRef.current.get(markerId)!.setMap(null);
+    })
+    // remove polygons from the map
+    selectedPolygonsRef.current.forEach(polygonId => {
+      polygonInstancesRef.current.get(polygonId)!.setMap(null);
+    })
+
+    // remove selected annots from courseData
+    let hole2AppIds: Map<number, string[]> = new Map<number, string[]>();
+    selectedPolygonsRef.current.forEach(polygonId => {
+      let holeId = polygonInstancesRef.current.get(polygonId)!.get("hole_id");
+      hole2AppIds.set(holeId, [...(hole2AppIds.get(holeId) || []), polygonId]);
+    })
+    selectedMarkersRef.current.forEach(markerId => {
+      let holeId = markerInstancesRef.current.get(markerId)!.get("hole_id");
+      hole2AppIds.set(holeId, [...(hole2AppIds.get(holeId) || []), markerId]);
+    })
+    hole2AppIds.forEach((appIds, hole_id) => {
+      let annotList: Annotation[] = courseDataRef.current!.annotations;
+      if (hole_id > 0) { annotList = courseDataRef.current!.holes.find(hole => hole.id === hole_id)!.annotations; }
+      appIds.forEach(appId => {
+        annotList = annotList.filter(annot => annot.appId !== appId);
+      })
+      if (hole_id > 0) { courseDataRef.current!.holes.find(hole => hole.id === hole_id)!.annotations = annotList; }
+      else { courseDataRef.current!.annotations = annotList; }
+    });
+
+    // remove annotations from the state variables and course data
+    setPolygonInstances(prev => {
+      const newMap = new Map(prev);
+      selectedPolygonsRef.current.forEach(polygonId => {
+        newMap.delete(polygonId);
+      })
+      return newMap;
+    })
+    setSelectedPolygons(new Set());
+
+    setMarkerInstances(prev => {
+      const newMap = new Map(prev);
+      selectedMarkersRef.current.forEach(markerId => {
+        newMap.delete(markerId);
+      })
+      return newMap;
+    })
+    setSelectedMarkers(new Set());
+    
   }
 
   // Check if marker is selected
@@ -679,6 +766,10 @@ function MapView({
     uiModeRef.current = uiMode
   }, [uiMode])
 
+  useEffect(() => {
+    addingCtxtRef.current = addingCtxt;
+  }, [addingCtxt])
+
   /*
   useEffect(() => {
     editingPolygonRef.current = editingPolygon
@@ -696,10 +787,13 @@ function MapView({
     }
     setAllPolygonClickability(true)
     setAllPolylineClickability(true)
-    if (uiModeRef.current !== "edit") {
+    if (uiModeRef.current === "shift") {
       setAllMarkerClickability(true)
     } else {
       setAllMarkerClickability(false)
+      if (uiModeRef.current === "add") {
+        setAllPolygonClickability(false);
+      }
     }
     polylineVertexInstances.forEach(verts => {
       verts.forEach(vert => {
@@ -776,6 +870,12 @@ function MapView({
         }
 
       }
+
+      else if (uiModeRef.current === "shift") {
+        if (event.key === 'Delete') {
+          handleDeleteSelectedAnnotations();
+        }
+      }
     }
 
     // Add event listener to window to ensure we capture all keyboard events
@@ -787,7 +887,43 @@ function MapView({
     }
   }, []) // Empty dependency array - set up once on mount
 
-  function renderGlobalAnnotations(annotations: Annotation[]) {
+  const haveMaxAnnotations = (holeId: number, annotType: string): boolean => {
+    let n: number = 0;
+    if(holeId === 0) {
+      //n = courseDataRef.current!.annotations.filter(annot => annot.annotType === annotType).length;
+      return false;
+    } else {
+      n = courseDataRef.current!.holes.find(hole => hole.id === holeId)?.annotations.filter(annot => annot.annotType === annotType).length || 0;
+      if(["tee", "cup", "teebox", "green", "ob"].includes(annotType)) {
+        return n >= 1;
+      }
+      return false;
+    }
+  }
+
+  const goToAddMode = (annotType: Annotation['annotType'], holeId: number) => {
+    console.log("goToAddMode", annotType, holeId);
+
+    setAddingCtxt(
+      createAddingContext(
+        annotType,
+        holeId,
+        mapRef.current!,
+        courseDataRef,
+        setSelectedMarkers,
+        setSelectedPolygons,
+        setMarkerInstances,
+        setPolygonInstances,
+        handleMarkerClick,
+        handlePolygonClick
+      )
+    );
+
+    // uiMode useEffect will handle de-selection, etc.
+    setUiMode("add");
+  }
+
+  const renderGlobalAnnotations = (annotations: Annotation[]) => {
 
     // separate tree annotations from other annotations
     let treeData: [string, string, string][] = [];
@@ -804,17 +940,24 @@ function MapView({
 
     return (
       <div style={{ paddingLeft: '35px', marginTop: '5px' }}>
+
+        {/* buttons to add annotations */}
+        <div><button onClick={() => goToAddMode("tree", 0)}>Add Trees</button></div>
+        <div><button onClick={() => goToAddMode("water", 0)}>Add water</button></div>
+        <div><button onClick={() => goToAddMode("asphalt", 0)}>Add asphalt</button></div>
+        <div><button onClick={() => goToAddMode("water_hole", 0)}>Add water cutout</button></div>
+
         {otherAnnots.map((annot) => (      
-          <div key={`global-${annot.id}`} style={{ display: 'flex', alignItems: 'center', marginBottom: '3px' }}>
+          <div key={`global-${annot.appId}`} style={{ display: 'flex', alignItems: 'center', marginBottom: '3px' }}>
             <input
               type="checkbox"
-              id={`annot-global-${annot.id}`}
+              id={`annot-global-${annot.appId}`}
               style={{ marginRight: '8px', cursor: 'pointer' }}
               checked={isAnnotationSelected(annot.appId)}
               onChange={(e) => handleSingleAnnotationSelect(annot.appId, e.target.checked)}
               disabled={uiMode === "edit" && (editingPolygonRef.current !== null) && !isAnnotationSelected(annot.appId)}
             />
-            <label htmlFor={`annot-global-${annot.id}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
+            <label htmlFor={`annot-global-${annot.appId}`} style={{ cursor: 'pointer', fontSize: '13px' }}>
               {annot.annotType}
             </label>
           </div>
@@ -920,7 +1063,7 @@ function MapView({
                   <div style={{
                     position: 'absolute',
                     top: '2px',
-                    left: uiMode === "shift" ? "2px" : "26px",
+                    left: uiMode !== "edit" ? "2px" : "26px",
                     width: '20px',
                     height: '20px',
                     backgroundColor: "#0099ff",
@@ -1054,6 +1197,27 @@ function MapView({
               {/* Hole Annotations */}
               {expandedFolders.has(`hole-${hole.id}`) && (
                 <div style={{ paddingLeft: '35px', marginTop: '5px' }}>
+
+                  {!haveMaxAnnotations(hole.id, "ob") && (
+                  <div><button onClick={() => goToAddMode("ob", hole.id)}>Add boundary</button></div>
+                  )}
+                  {!haveMaxAnnotations(hole.id, "tee") && (
+                  <div><button onClick={() => goToAddMode("tee", hole.id)}>Add Tee</button></div>
+                  )}
+                  {!haveMaxAnnotations(hole.id, "cup") && (
+                  <div><button onClick={() => goToAddMode("cup", hole.id)}>Add Cup</button></div>
+                  )}
+                  {!haveMaxAnnotations(hole.id, "teebox") && (
+                  <div><button onClick={() => goToAddMode("teebox", hole.id)}>Add teebox</button></div>
+                  )}
+                  {!haveMaxAnnotations(hole.id, "green") && (
+                  <div><button onClick={() => goToAddMode("green", hole.id)}>Add bunker</button></div>
+                  )}
+                  <div><button onClick={() => goToAddMode("fairway", hole.id)}>Add fairway</button></div>
+                  <div><button onClick={() => goToAddMode("bunker", hole.id)}>Add bunker</button></div>
+                  <div><button onClick={() => goToAddMode("drop", hole.id)}>Add drop point</button></div>
+                  <div><button onClick={() => goToAddMode("fairway_hole", hole.id)}>Add fairway cutout</button></div>
+
                   {hole.annotations.map((annot) => (
                     <div key={`hole-${hole.id}-${annot.id}`} style={{ display: 'flex', alignItems: 'center', marginBottom: '3px' }}>
                       <input

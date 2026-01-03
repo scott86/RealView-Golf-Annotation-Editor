@@ -1,4 +1,5 @@
-import { CourseData } from '../types/map'
+import { markerStyles, createAnnotation } from '../config/mapStyles';
+import { CourseData, MarkerStyle, Annotation } from '../types/map'
 
 export interface VertexMarker {
   prev: VertexMarker | null;
@@ -498,4 +499,190 @@ export const createVertexMarkers = (geom: google.maps.Polygon | google.maps.Poly
 
     console.log(`Created ${markers.length} vertex markers`);
     return markers;
+}
+
+export interface AddingContext {
+  annotType: Annotation['annotType'];
+  holeId: number;
+  map: google.maps.Map;
+  isPolygon: boolean;
+  coords: google.maps.LatLng[];
+  markers: google.maps.Marker[];
+  courseDataRef: React.RefObject<CourseData>;
+  setSelectedMarkers: (markersOrUpdater: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+  setSelectedPolygons: (polygons: Set<string>) => void;
+  setMarkerInstances: (markerInstsOrUpdater: Map<string, google.maps.Marker> | ((prev: Map<string, google.maps.Marker>) => Map<string, google.maps.Marker>)) => void;
+  setPolygonInstances: (polygonInstsOrUpdater: Map<string, google.maps.Polygon> | ((prev: Map<string, google.maps.Polygon>) => Map<string, google.maps.Polygon>)) => void;
+  markerClickCallback: (markerId: string) => void;
+  polygonClickCallback: (polygonId: string) => void;
+}
+
+export const createAddingContext = (
+  annotType: Annotation['annotType'],
+  holeId: number,
+  map: google.maps.Map,
+  courseDataRef: React.RefObject<CourseData>,
+  setSelectedMarkers: (markersOrUpdater: Set<string> | ((prev: Set<string>) => Set<string>)) => void,
+  setSelectedPolygons: (polygons: Set<string>) => void,
+  setMarkerInstances: (markerInstsOrUpdater: Map<string, google.maps.Marker> | ((prev: Map<string, google.maps.Marker>) => Map<string, google.maps.Marker>)) => void,
+  setPolygonInstances: (polygonInstsOrUpdater: Map<string, google.maps.Polygon> | ((prev: Map<string, google.maps.Polygon>) => Map<string, google.maps.Polygon>)) => void,
+  markerClickCallback: (markerId: string) => void,
+  polygonClickCallback: (polygonId: string) => void,
+): AddingContext => {
+  return {
+    annotType: annotType,
+    holeId: holeId,
+    map: map,
+    isPolygon: !["tee", "cup", "drop", "tree"].includes(annotType),
+    coords: [],
+    markers: [],
+    courseDataRef: courseDataRef,
+    setSelectedMarkers: setSelectedMarkers,
+    setSelectedPolygons: setSelectedPolygons,
+    setMarkerInstances: setMarkerInstances,
+    setPolygonInstances: setPolygonInstances,
+    markerClickCallback: markerClickCallback,
+    polygonClickCallback: polygonClickCallback,
+  }
+}
+
+export const addVertexToAddingContext = (addingContext: AddingContext, latLng: google.maps.LatLng): boolean => {
+  addingContext.coords.push(latLng);
+
+  if (addingContext.isPolygon) {
+    // if polygon, just add a new vertex marker to the map
+    addingContext.markers.push(new google.maps.Marker({
+      position: latLng,
+      map: addingContext.map,
+      clickable: false,
+      draggable: false,
+      icon: vertexSymbol("cyan"),
+      zIndex: 1000,
+    }));
+    return true; // still active
+  }
+
+  // immediately add the new marker to the map
+  let markerStyle: MarkerStyle = markerStyles[addingContext.annotType];
+  let newMarker = new google.maps.Marker({
+    position: latLng,
+    map: addingContext.map,
+    clickable: false,
+    draggable: false,
+    ...markerStyle,
+    zIndex: 1000,
+  });
+  addingContext.markers.push(newMarker);
+
+  // register click callback
+  newMarker.addListener('click', () => {
+    addingContext.markerClickCallback(newMarker.get("app_id")!);
+  });
+
+  // app_id must be unique but also indicate that it's new (no database id)
+  let newAppId = "";
+  if (addingContext.holeId === 0) { newAppId += "g"; }
+  newAppId += "N" // new instead of db id
+  newAppId += "-Marker-" + crypto.randomUUID();
+  newMarker.set("app_id", newAppId);
+  newMarker.set("hole_id", addingContext.holeId);
+  newMarker.set("annot_type", addingContext.annotType);
+
+  addingContext.setSelectedMarkers((prev: Set<string>) => {
+    return new Set([...prev, newMarker.get("app_id")]);
+  });
+
+  // add the new marker to the markerInstances
+  addingContext.setMarkerInstances((prev: Map<string, google.maps.Marker>) => {
+    return new Map([...prev, [newMarker.get("app_id"), newMarker]]);
+  });
+
+  // add the new marker to the courseData
+  if(addingContext.holeId === 0) {
+    addingContext.courseDataRef.current!.annotations.push({
+      id: -1, // temporary id for new annotation
+      appId: newAppId,
+      annotType: addingContext.annotType,
+      holeId: addingContext.holeId,
+      numCoords: 1,
+      rawCoords: [latLng.lng(), latLng.lat()],
+    });
+  } else {
+    addingContext.courseDataRef.current!.holes.find(hole => hole.id === addingContext.holeId)!.annotations.push({
+      id: -1, // temporary id for new annotation
+      appId: newAppId,
+      annotType: addingContext.annotType,
+      holeId: addingContext.holeId,
+      numCoords: 1,
+      rawCoords: [latLng.lng(), latLng.lat()],
+    });
+  }
+
+  // keep active only if it's tree type
+  return addingContext.annotType === "tree";
+}
+
+export const endAddingContext = (addingContext: AddingContext) => {
+
+  // no action necessary if it's a marker type
+  if (!addingContext.isPolygon) { return; }
+
+  // remove the temporary vertex markers from the map
+  addingContext.markers.forEach(marker => { marker.setMap(null); });
+
+  // verify that there are at least 3 vertices
+  if (addingContext.coords.length < 3) {
+    alert("A polygon must have at least 3 vertices");
+    return;
+  }
+
+  // create a new app_id for the polygon
+  let newAppId = "";
+  if (addingContext.holeId === 0) { newAppId += "g"; }
+  newAppId += "N" // new instead of db id
+  newAppId += "-Polygon-" + crypto.randomUUID();
+
+  let rawCoords: number[] = [];
+  addingContext.coords.forEach(coord => {
+    rawCoords.push(coord.lng());
+    rawCoords.push(coord.lat());
+  });
+
+  // need to repeat the first coordinate for polygon closure
+  rawCoords.push(addingContext.coords[0].lng());
+  rawCoords.push(addingContext.coords[0].lat());
+
+  // create an Annotation object
+  let newAnnot: Annotation = {
+    id: -1, // temporary id for new annotation
+    appId: newAppId,
+    annotType: addingContext.annotType,
+    holeId: addingContext.holeId,
+    numCoords: addingContext.coords.length+1,
+    rawCoords: rawCoords
+  };
+
+  // add the annotation to the courseData
+  if(addingContext.holeId === 0) {
+    addingContext.courseDataRef.current!.annotations.push(newAnnot);
+  } else {
+    addingContext.courseDataRef.current!.holes.find(hole => hole.id === addingContext.holeId)!.annotations.push(newAnnot);
+  }
+
+  // create the new polygon
+  let newPolygon = createAnnotation(newAnnot, addingContext.map, addingContext.holeId === 0)[0] as google.maps.Polygon;
+
+  // register click callback
+  newPolygon.addListener('click', () => {
+    addingContext.polygonClickCallback(newPolygon.get("app_id")!);
+  });
+
+  // add it to the polygonInstances
+  addingContext.setPolygonInstances((prev: Map<string, google.maps.Polygon>) => {
+    return new Map([...prev, [newAppId, newPolygon]]);
+  });
+
+  // select it
+  let temp = new Set<string>([newAppId]);
+  addingContext.setSelectedPolygons(temp);
 }
